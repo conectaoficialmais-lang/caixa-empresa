@@ -45,6 +45,22 @@ function dadosExemplo(hoje) {
     { data: d(18), tipo: 'saida', descricao: 'Fornecedor C — compra de teste', valor: 350000, categoria: 'produto-novo', carteira: 'inter', status: 'previsto' },
   ];
 
+  // boletos de exemplo: um atrasado, um vencendo logo, um ja pago e um
+  // parcelado — para a aba mostrar todas as situacoes de uma vez
+  const boletos = [
+    { descricao: 'Energia elétrica', valor: 46500, vencimento: d(-3), categoria: 'outra-saida', carteira: 'inter', status: 'previsto' },
+    { descricao: 'Internet e telefone', valor: 19900, vencimento: d(2), categoria: 'software', carteira: 'inter', status: 'previsto' },
+    { descricao: 'Fornecedor A — nota 4471', valor: 620000, vencimento: d(9), categoria: 'estoque', carteira: 'inter', status: 'previsto' },
+    { descricao: 'Contador', valor: 25000, vencimento: d(-8), categoria: 'contador', carteira: 'inter', status: 'realizado', pagoEm: d(-8) },
+    { descricao: 'Fornecedor C — maquinário (1/3)', valor: 116667, vencimento: d(14), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 1, de: 3 } },
+    { descricao: 'Fornecedor C — maquinário (2/3)', valor: 116667, vencimento: N.somarMeses(d(14), 1), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 2, de: 3 } },
+    { descricao: 'Fornecedor C — maquinário (3/3)', valor: 116666, vencimento: N.somarMeses(d(14), 2), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 3, de: 3 } },
+    { descricao: 'Aluguel do depósito', valor: 180000, vencimento: doMes(N.mesDe(N.somarMeses(h, 1)), 5), categoria: 'outra-saida', carteira: 'inter', status: 'previsto' },
+    { descricao: 'Imposto do próximo mês', valor: 190000, vencimento: doMes(N.mesDe(N.somarMeses(h, 1)), 20), categoria: 'imposto', carteira: 'inter', status: 'previsto' },
+  ].map((b) =>
+    Object.assign({ boleto: true, tipo: 'saida' }, b, { data: b.status === 'realizado' ? b.pagoEm : b.vencimento })
+  );
+
   const recorrentes = [
     { id: 'prolabore', descricao: 'Pro-labore', valor: 400000, dia: 5, tipo: 'saida', categoria: 'prolabore', carteira: 'inter', ativo: true },
     { id: 'imposto', descricao: 'Imposto (DAS)', valor: 190000, dia: 20, tipo: 'saida', categoria: 'imposto', carteira: 'inter', ativo: true },
@@ -62,7 +78,7 @@ function dadosExemplo(hoje) {
     { id: 'shopee', nome: 'Carteira marketplace B', disponivel: 75000, aLiberar: 256000, diasLiberacao: 20, reserva: false, conferidoEm: h, conferidoEmTs: new Date(h + 'T00:00:00').toISOString(), ordem: 4 },
   ];
 
-  return { lancamentos: lancamentos, recorrentes: recorrentes, carteiras: carteiras };
+  return { lancamentos: lancamentos.concat(boletos), recorrentes: recorrentes, carteiras: carteiras };
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { dadosExemplo: dadosExemplo };

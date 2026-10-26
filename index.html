@@ -10,6 +10,14 @@
 </head>
 <body>
 
+<!-- 1a camada de luz: o fundo. Nada aqui e conteudo, e so iluminacao. -->
+<div class="luz-fundo" aria-hidden="true">
+  <span class="luz luz-1"></span>
+  <span class="luz luz-2"></span>
+  <span class="luz luz-3"></span>
+  <span class="trama"></span>
+</div>
+
 <header class="topo">
   <div class="topo-faixa">
     <div class="marca">
@@ -27,6 +35,7 @@
 
   <nav class="abas" role="tablist">
     <button class="aba ativa" role="tab" data-aba="painel">Painel</button>
+    <button class="aba" role="tab" data-aba="boletos">Boletos <span id="pino-boletos" class="pino" hidden></span></button>
     <button class="aba" role="tab" data-aba="lancamentos">Lançamentos</button>
     <button class="aba" role="tab" data-aba="agenda">Agenda</button>
     <button class="aba" role="tab" data-aba="orcamento">Orçamento</button>
@@ -107,6 +116,83 @@
   <div class="cartao">
     <div class="cartao-cabeca"><h3>Próximos 30 dias</h3><span class="selo" id="selo-proximos">—</span></div>
     <div id="tabela-proximos"></div>
+  </div>
+</section>
+
+<!-- =============================================================== BOLETOS -->
+<section id="painel-boletos" class="painel" role="tabpanel">
+
+  <div id="alertas-boletos"></div>
+
+  <div class="kpis" id="kpis-boletos"></div>
+
+  <div class="cartao brilho" data-luz="azul">
+    <div class="cartao-cabeca">
+      <h2>Novo boleto</h2>
+      <span class="selo" id="selo-leitura" hidden>—</span>
+    </div>
+
+    <label><span class="rotulo">Linha digitável (opcional — preenche valor e vencimento sozinho)</span>
+      <div class="linha" style="gap:8px">
+        <input id="b-linha" class="cresce num" type="text" inputmode="numeric" placeholder="34191.09008 12345.678901 23456.789012 3 16310000125050" spellcheck="false">
+        <button id="btn-ler-linha" class="btn btn-fantasma" type="button">Ler código</button>
+      </div>
+      <span class="ajuda">São os 47 números do boleto bancário, ou os 48 da conta de luz, água e imposto. Cole com pontos e espaços mesmo.</span>
+    </label>
+
+    <form id="form-boleto" autocomplete="off" style="margin-top:14px">
+      <div class="linha">
+        <label class="cresce" style="flex:2 1 240px"><span class="rotulo">Quem recebe</span><input id="b-beneficiario" type="text" placeholder="Energia, fornecedor, contador…" required></label>
+        <label style="flex:0 0 150px"><span class="rotulo">Valor</span><input id="b-valor" class="direita" type="text" inputmode="decimal" placeholder="465,00" required></label>
+        <label style="flex:0 0 160px"><span class="rotulo">Vencimento</span><input id="b-vencimento" type="date" required></label>
+        <label style="flex:0 0 120px"><span class="rotulo">Parcelas</span><input id="b-parcelas" class="direita" type="number" min="1" max="60" value="1"></label>
+      </div>
+      <div class="linha" style="margin-top:10px">
+        <label class="cresce"><span class="rotulo">Categoria</span><select id="b-categoria"></select></label>
+        <label class="cresce"><span class="rotulo">Sai de qual carteira</span><select id="b-carteira"></select></label>
+        <label class="cresce" style="flex:2 1 200px"><span class="rotulo">Observação</span><input id="b-obs" type="text" placeholder="nº do pedido, referência, o que for"></label>
+      </div>
+      <div class="linha" style="margin-top:12px">
+        <label class="caixa-check"><input id="b-pago" type="checkbox"> Este já está pago</label>
+        <div style="margin-left:auto; display:flex; gap:8px">
+          <button id="btn-cancelar-boleto" class="btn btn-fantasma" type="button" hidden>Cancelar</button>
+          <button class="btn" type="submit">Guardar boleto</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca">
+      <h3>Minhas contas</h3>
+      <span class="selo" id="selo-boletos">—</span>
+    </div>
+
+    <div class="linha" style="gap:14px; align-items:center">
+      <div class="pilulas" id="pilulas-mes-boleto">
+        <button class="pilula" data-quando="vencidos">Atrasados</button>
+        <button class="pilula ativa" data-quando="este">Este mês</button>
+        <button class="pilula" data-quando="proximo">Próximo mês</button>
+        <button class="pilula" data-quando="todos">Tudo</button>
+      </div>
+      <div class="pilulas" id="pilulas-status-boleto">
+        <button class="pilula ativa" data-status="">Todos</button>
+        <button class="pilula" data-status="aberto">A pagar</button>
+        <button class="pilula" data-status="pago">Pagos</button>
+      </div>
+      <label class="cresce" style="min-width:160px"><input id="b-busca" type="search" placeholder="buscar por nome…"></label>
+    </div>
+
+    <div id="lista-boletos" style="margin-top:14px"></div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>O mês que vem já está pago?</h3></div>
+    <p class="explica">
+      Esta barra compara o que vence no próximo mês com o que o caixa projeta ter até lá. É a pergunta
+      que o boleto sozinho não responde: <b>não adianta saber o quanto, sem saber se tem</b>.
+    </p>
+    <div id="boletos-versus-caixa"></div>
   </div>
 </section>
 
@@ -528,6 +614,26 @@
         <p><b>3. Ajustes → Premissas.</b> Três números: quanto de venda nova cai por dia, quanto você
         recompra de estoque por mês e em que dia. Esses três mandam na projeção.</p>
         <p><b>4. Importar.</b> Cola o CSV do banco. Daí para frente é rotina: importar, conferir, decidir.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Boletos: guardar a conta antes dela virar susto</summary>
+      <div>
+        <p>A aba <b>Boletos</b> é onde moram as contas que ainda vão ser pagas. Cada boleto tem quem
+        recebe, valor, vencimento e um interruptor de <b>pago / não pago</b> — é só clicar quando o
+        dinheiro sair.</p>
+        <p><b>Cole a linha digitável</b> e o app lê sozinho o valor e o vencimento. Funciona com os 47
+        números do boleto bancário e com os 48 da conta de luz, água ou imposto — nesse segundo caso só
+        o valor, porque conta de concessionária não carrega a data dentro do código. Confira sempre
+        antes de salvar; o código diz o que foi emitido, não o que foi renegociado depois.</p>
+        <p><b>Parcelas:</b> ponha o número no campo e o app cria uma conta por mês, com o mesmo dia de
+        vencimento. O centavo que sobra da divisão vai na última, para a soma bater exata.</p>
+        <p>Boleto aqui <b>não é uma lista à parte</b>: ele é um lançamento previsto como outro qualquer,
+        então já entra na projeção do painel e no poder de compra. É por isso que, quando você marca
+        como pago, o saldo da carteira desce na hora.</p>
+        <p>O quadro <b>“o mês que vem já está pago?”</b> fecha a conta que o boleto sozinho não fecha:
+        compara o que vence com o que o caixa projeta ter até lá, e diz o dia em que falta dinheiro.</p>
       </div>
     </details>
 

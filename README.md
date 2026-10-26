@@ -2,14 +2,14 @@
 
 Controle de caixa de uma operação de marketplace: **entra, sai, sobra — e quando dá para investir**.
 
-Não é só um caderno de lançamentos. O app projeta o saldo dia a dia, divide a sobra do mês em
-envelopes de orçamento, acompanha a reserva de emergência e responde à pergunta que decide o
-crescimento do negócio: *posso comprar produto novo agora, quanto, e em quanto tempo esse dinheiro
-volta?*
+Não é só um caderno de lançamentos. O app guarda todos os **boletos e contas a pagar**, projeta o
+saldo dia a dia, divide a sobra do mês em envelopes de orçamento, acompanha a reserva de emergência
+e responde à pergunta que decide o crescimento do negócio: *posso comprar produto novo agora,
+quanto, e em quanto tempo esse dinheiro volta?*
 
 Site estático, sem build e sem dependências: HTML, CSS e três arquivos de JavaScript.
 
-![testes](https://img.shields.io/badge/testes-156%20passando-brightgreen)
+![testes](https://img.shields.io/badge/testes-191%20passando-brightgreen)
 ![dependências](https://img.shields.io/badge/depend%C3%AAncias-0-blue)
 
 ---
@@ -57,7 +57,8 @@ compra livre**.
 
 | Aba | Para que serve |
 | --- | --- |
-| **Painel** | Caixa total, disponível, a liberar, menor saldo do horizonte, sobrevida sem vender. Projeção dia a dia, simulador de cenário (vendas caem / repasse atrasa) e o “consigo pagar?”. |
+| **Painel** | Caixa total, disponível, a liberar, menor saldo do horizonte, boletos em aberto, sobrevida sem vender. Projeção dia a dia, simulador de cenário (vendas caem / repasse atrasa) e o “consigo pagar?”. |
+| **Boletos** | Todas as contas a pagar, com vencimento, interruptor de pago, parcelamento e leitura da linha digitável. Avisa o que venceu e responde se o mês que vem cabe no caixa. |
 | **Lançamentos** | Entradas, saídas e transferências, com filtros, busca e marcação de gasto pessoal pago pela empresa. |
 | **Agenda** | Contas fixas do mês (pró-labore, imposto, contador) e compromissos marcados, que alimentam a projeção. |
 | **Orçamento** | Divisão da sobra em envelopes (reserva, estoque, produtos novos, insumos, mídia, investimentos), com acumulado entre meses, e a reserva de emergência medida em meses de custo fixo. |
@@ -72,7 +73,7 @@ compra livre**.
 ## As contas
 
 Elas vivem todas em [`assets/nucleo.js`](assets/nucleo.js), que é puro (não toca na tela) e tem
-156 testes em [`tools/testar.js`](tools/testar.js).
+191 testes em [`tools/testar.js`](tools/testar.js).
 
 ### Projeção de saldo
 
@@ -86,6 +87,33 @@ saldo de hoje   = disponível de todas as carteiras
 ```
 
 Transferência não entra em lugar nenhum dessa conta.
+
+### Boletos
+
+Um boleto **não é uma lista à parte**: é um lançamento previsto marcado com `boleto: true`, com
+`vencimento` próprio. Por ser um lançamento de verdade, ele já entra na projeção de caixa e no poder
+de compra — e marcar como pago move o saldo da carteira na hora.
+
+```
+em aberto → data = vencimento   (é nesse dia que o caixa sente)
+pago      → data = dia do pagamento, e o vencimento fica guardado
+```
+
+Guardar os dois é o que permite ver **quem foi pago atrasado**, e quanto.
+
+A **linha digitável** é lida de verdade, não só armazenada:
+
+- **Boleto bancário (47 dígitos).** Os 14 últimos dígitos trazem o fator de vencimento (4) e o valor
+  em centavos (10). O fator é a quantidade de dias desde 07/10/1997 — e, desde a virada de 2025,
+  desde 22/02/2025, quando a contagem bateu 9999 e recomeçou em 1000. O mesmo número cabe nos dois
+  calendários, então o app fica com a data que cai **mais perto de hoje**: boleto é papel de curto
+  prazo, não de 2002 nem de 2049.
+- **Conta de concessionária (48 dígitos, começa com 8).** Luz, água, imposto. O código tem valor mas
+  **não tem vencimento**, e o valor só é dinheiro quando o terceiro dígito é 6 ou 7 (8 e 9 são
+  quantidade de moeda). O app avisa em vez de inventar uma data.
+
+O parcelamento divide em contas mensais e joga o centavo que sobra na última parcela, para a soma
+bater com o total exato.
 
 ### Saldo das carteiras
 
@@ -160,6 +188,24 @@ Honestidade antes de confiança:
 
 ---
 
+## A direção visual
+
+O tema escuro é montado em três camadas de luz, e a folha de estilo inteira gira em torno disso:
+
+1. **Luz de fundo** — manchas radiais atrás de tudo (`.luz-fundo`), que dão a cor do ambiente. Nada
+   ali é conteúdo.
+2. **Luz do brilho** — o halo colorido por baixo do cartão (`.brilho`): sombra colorida mais um fio
+   de luz na borda de baixo.
+3. **Luz do componente** — o degradê de dentro do próprio cartão e o fio claro na borda de cima,
+   como se a luz do ambiente batesse nele.
+
+Cada cartão escolhe a cor da sua luz em `data-luz` (azul, verde, vermelho, âmbar, roxo, laranja,
+ciano), e nos boletos essa cor é a própria situação da conta. Sem `data-luz` o componente continua
+funcionando: **a luz é acabamento, nunca estrutura**. No tema claro o halo é desligado — brilho
+colorido sobre fundo branco vira sujeira, não profundidade.
+
+Sem webfont de propósito: o app abre offline e não depende de CDN nenhuma.
+
 ## Estrutura
 
 ```
@@ -168,7 +214,7 @@ assets/nucleo.js    as contas, puras e testadas (roda no navegador e no Node)
 assets/app.js       estado, telas, gráficos e eventos
 assets/exemplo.js   dados fictícios do botão "carregar exemplo"
 assets/style.css    tema escuro e claro
-tools/testar.js     156 testes das funções puras
+tools/testar.js     191 testes das funções puras
 tools/servidor.js   servidor estático mínimo
 ```
 

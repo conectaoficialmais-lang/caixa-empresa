@@ -124,7 +124,9 @@ const vista = {
   cenario: { vendas: 0, atrasoLiberacao: 0 },
   mesesRelatorio: 6,
   editando: null,
+  editandoBoleto: null,
   filtros: { mes: '', tipo: '', categoria: '', carteira: '', busca: '' },
+  boletos: { quando: 'este', status: '', busca: '' },
   importacao: null,
 };
 
@@ -438,34 +440,46 @@ function pintarPainel() {
   const runway = N.calcularRunway(soma.total, cf);
 
   // KPIs
+  const emAberto = N.resumoBoletos(boletosDe().filter((b) => b.status !== 'realizado'), N.hojeIso());
+
   const kpis = [
-    { rotulo: 'Caixa total da empresa', valor: dinheiro(soma.total), nota: 'disponível + a liberar, todas as carteiras', destaque: true },
-    { rotulo: 'Disponível hoje', valor: dinheiro(soma.disponivel), nota: 'dá para gastar agora' },
-    { rotulo: 'A liberar', valor: dinheiro(soma.aLiberar), nota: 'venda feita que o marketplace ainda não soltou' },
+    { rotulo: 'Caixa total da empresa', valor: dinheiro(soma.total), nota: 'disponível + a liberar, todas as carteiras', destaque: true, luz: 'ciano' },
+    { rotulo: 'Disponível hoje', valor: dinheiro(soma.disponivel), nota: 'dá para gastar agora', luz: 'azul' },
+    { rotulo: 'A liberar', valor: dinheiro(soma.aLiberar), nota: 'venda feita que o marketplace ainda não soltou', luz: 'roxo' },
     {
       rotulo: 'Menor saldo em ' + proj.horizonte + 'd',
       valor: dinheiro(proj.menorSaldo),
       nota: 'no dia ' + N.formatarData(proj.dataMenorSaldo),
       cor: proj.menorSaldo < 0 ? 'vermelho' : proj.menorSaldo < piso() ? 'amarelo' : 'verde',
+      luz: proj.menorSaldo < 0 ? 'vermelho' : proj.menorSaldo < piso() ? 'amarelo' : 'verde',
+    },
+    {
+      rotulo: 'Boletos em aberto',
+      valor: dinheiro(emAberto.aberto),
+      nota: emAberto.vencido ? dinheiro(emAberto.vencido) + ' já venceu' : emAberto.quantidade + ' contas guardadas',
+      cor: emAberto.vencido ? 'vermelho' : '',
+      luz: emAberto.vencido ? 'vermelho' : 'laranja',
     },
     {
       rotulo: 'Sobra de caixa do mês',
       valor: dinheiro(fechado.resultado, { comMais: true }),
       nota: 'não é lucro — é caixa',
       cor: fechado.resultado >= 0 ? 'verde' : 'vermelho',
+      luz: fechado.resultado >= 0 ? 'verde' : 'vermelho',
     },
     {
       rotulo: 'Sobrevive sem vender',
       valor: runway === null ? '—' : runway.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' meses',
       nota: cf ? 'custo fixo de ' + dinheiro(cf) + '/mês' : 'cadastre as contas fixas',
       cor: runway === null ? '' : runway < 1 ? 'vermelho' : runway < 3 ? 'amarelo' : 'verde',
+      luz: runway === null ? 'azul' : runway < 1 ? 'vermelho' : runway < 3 ? 'amarelo' : 'verde',
     },
   ];
 
   $('#kpis').innerHTML = kpis
     .map(
       (k) =>
-        '<div class="kpi' + (k.destaque ? ' destaque' : '') + '">' +
+        '<div class="kpi' + (k.destaque ? ' destaque' : '') + '" data-luz="' + (k.luz || 'azul') + '">' +
         '<div class="kpi-rotulo">' + esc(k.rotulo) + '</div>' +
         '<div class="kpi-valor ' + (k.cor || '') + '">' + esc(k.valor) + '</div>' +
         '<div class="kpi-nota">' + esc(k.nota) + '</div></div>'
@@ -562,6 +576,13 @@ function pintarAlertas(soma, proj, fechado, runway) {
   if (fechado.pessoais > 0) {
     avisos.push(['atencao', '◉', 'Este mês já saíram <b>' + dinheiro(fechado.pessoais) + '</b> de gasto pessoal pela conta da empresa' + (fechado.pctPessoal ? ' (' + N.pct(fechado.pctPessoal) + ' das saídas)' : '') + '. Isso não é pró-labore: é mistura, e ela some do radar justamente por ser pequena cada vez.']);
   }
+  const boletosAbertos = N.resumoBoletos(boletosDe().filter((b) => b.status !== 'realizado'), N.hojeIso());
+  if (boletosAbertos.vencido > 0) {
+    avisos.push(['ruim', '▲', '<b>' + dinheiro(boletosAbertos.vencido) + '</b> em boletos já venceu' + (boletosAbertos.quantidadeVencida > 1 ? ' (' + boletosAbertos.quantidadeVencida + ' contas)' : '') + '. Juros correm todo dia — veja na aba <b>Boletos</b>.']);
+  } else if (boletosAbertos.venceHoje > 0) {
+    avisos.push(['atencao', '◉', '<b>' + dinheiro(boletosAbertos.venceHoje) + '</b> em boletos vence <b>hoje</b>.']);
+  }
+
   const res = reservaAtual();
   if (res.meta > 0 && !res.completa) {
     avisos.push(['info', '◇', 'Reserva de emergência em <b>' + N.pct(res.progresso, 0) + '</b> da meta (faltam ' + dinheiro(res.falta) + ' para cobrir ' + res.metaMeses + ' meses de custo fixo).']);
@@ -603,6 +624,225 @@ function pintarCenario(proj) {
     ' — ' + esc(dinheiro(Math.abs(difMenor))) + (difMenor < 0 ? ' pior' : ' melhor') + ' que o normal.' +
     (proj.negativa ? ' <b>O caixa não aguenta.</b>' : proj.furaPiso ? ' Fura o piso de segurança.' : ' Ainda aguenta.') +
     '</div></div>';
+}
+
+/* ==================================================== TELA: BOLETOS ===== */
+
+/**
+ * Boleto e um lancamento como qualquer outro — marcado com `boleto: true` e com
+ * `vencimento` proprio. E de proposito: assim ele ja entra na projecao de caixa
+ * e no fechamento do mes, sem lista paralela que vive fora das contas.
+ *
+ * Enquanto esta em aberto, `data` = vencimento (e nesse dia que o caixa sente).
+ * Quando e pago, `data` passa a ser o dia do pagamento e o vencimento fica
+ * guardado — e assim que se enxerga quem foi pago atrasado.
+ */
+function boletosDe() {
+  return estado.lancamentos.filter((l) => l.boleto);
+}
+
+const CORES_SITUACAO = { pago: 'verde', vencido: 'vermelho', hoje: 'laranja', perto: 'amarelo', aberto: 'azul' };
+const ROTULOS_SITUACAO = { pago: 'pago', vencido: 'venceu', hoje: 'vence hoje', perto: 'vence já', aberto: 'a pagar' };
+
+function janelaBoletos() {
+  const hoje = N.hojeIso();
+  const mesAtual = N.mesDe(hoje);
+  const proximo = N.mesDe(N.somarMeses(hoje, 1));
+  if (vista.boletos.quando === 'este') return { mes: mesAtual, titulo: N.formatarMes(mesAtual) };
+  if (vista.boletos.quando === 'proximo') return { mes: proximo, titulo: N.formatarMes(proximo) };
+  if (vista.boletos.quando === 'vencidos') return { vencidos: true, titulo: 'atrasados' };
+  return { todos: true, titulo: 'todos' };
+}
+
+function filtrarBoletos() {
+  const hoje = N.hojeIso();
+  const j = janelaBoletos();
+  const busca = (vista.boletos.busca || '').trim().toLowerCase();
+
+  return boletosDe()
+    .filter((b) => {
+      if (j.vencidos) return N.situacaoBoleto(b, hoje) === 'vencido';
+      if (j.mes) return N.mesDe(b.vencimento || b.data) === j.mes;
+      return true;
+    })
+    .filter((b) => {
+      const s = N.situacaoBoleto(b, hoje);
+      if (vista.boletos.status === 'pago') return s === 'pago';
+      if (vista.boletos.status === 'aberto') return s !== 'pago';
+      return true;
+    })
+    .filter((b) => !busca || String(b.descricao || '').toLowerCase().indexOf(busca) >= 0)
+    .sort((a, b) => {
+      const va = a.vencimento || a.data;
+      const vb = b.vencimento || b.data;
+      return va < vb ? -1 : va > vb ? 1 : 0;
+    });
+}
+
+function pintarBoletos() {
+  const hoje = N.hojeIso();
+  const todos = boletosDe();
+  const lista = filtrarBoletos();
+  const j = janelaBoletos();
+  const resumo = N.resumoBoletos(lista, hoje);
+  const resumoGeral = N.resumoBoletos(todos.filter((b) => b.status !== 'realizado'), hoje);
+
+  $('#b-categoria').innerHTML = opcoesCategoria('saida', $('#b-categoria').value, 'sem categoria');
+  $('#b-carteira').innerHTML = opcoesCarteira($('#b-carteira').value, 'sem carteira');
+
+  // bolinha na aba quando tem conta atrasada
+  $('#pino-boletos').hidden = resumoGeral.quantidadeVencida === 0;
+
+  // KPIs
+  const kpis = [
+    { rotulo: 'A pagar — ' + j.titulo, valor: dinheiro(resumo.aberto), nota: resumo.quantidade - resumo.porSituacao.pago + ' contas em aberto', luz: 'azul', destaque: true },
+    { rotulo: 'Atrasado', valor: dinheiro(resumo.vencido), nota: resumo.quantidadeVencida ? resumo.quantidadeVencida + ' conta(s) passou do prazo' : 'nada vencido', luz: resumo.vencido ? 'vermelho' : 'verde', cor: resumo.vencido ? 'vermelho' : 'verde' },
+    { rotulo: 'Vence em 7 dias', valor: dinheiro(resumo.proximos7), nota: resumo.venceHoje ? dinheiro(resumo.venceHoje) + ' é hoje' : 'nada para hoje', luz: 'amarelo', cor: resumo.proximos7 ? 'amarelo' : '' },
+    { rotulo: 'Já pago — ' + j.titulo, valor: dinheiro(resumo.pago), nota: resumo.porSituacao.pago + ' de ' + resumo.quantidade + ' contas', luz: 'verde', cor: 'verde' },
+  ];
+  $('#kpis-boletos').innerHTML = kpis
+    .map(
+      (k) =>
+        '<div class="kpi' + (k.destaque ? ' destaque' : '') + '" data-luz="' + k.luz + '">' +
+        '<div class="kpi-rotulo">' + esc(k.rotulo) + '</div>' +
+        '<div class="kpi-valor ' + (k.cor || '') + '">' + esc(k.valor) + '</div>' +
+        '<div class="kpi-nota">' + esc(k.nota) + '</div></div>'
+    )
+    .join('');
+
+  // avisos
+  const avisos = [];
+  if (resumoGeral.vencido > 0) {
+    avisos.push(['ruim', '▲', '<b>' + dinheiro(resumoGeral.vencido) + '</b> em ' + resumoGeral.quantidadeVencida + ' conta(s) já passou do vencimento. Juros e multa correm todo dia — essas vêm antes de qualquer compra nova.']);
+  }
+  if (resumoGeral.venceHoje > 0) {
+    avisos.push(['atencao', '◉', '<b>' + dinheiro(resumoGeral.venceHoje) + '</b> vence <b>hoje</b>. Depois das 20h a maioria dos bancos só agenda para amanhã.']);
+  }
+  if (!todos.length) {
+    avisos.push(['info', '◆', 'Nenhum boleto guardado ainda. Cole a linha digitável no campo abaixo e o valor e o vencimento se preenchem sozinhos — ou digite na mão, se preferir.']);
+  }
+  $('#alertas-boletos').innerHTML = avisos
+    .map((a) => '<div class="aviso ' + a[0] + '"><span class="aviso-icone">' + a[1] + '</span><div>' + a[2] + '</div></div>')
+    .join('');
+
+  $('#selo-boletos').textContent = lista.length + ' contas · ' + dinheiro(resumo.total);
+
+  // a lista, agrupada por dia de vencimento
+  if (!lista.length) {
+    $('#lista-boletos').innerHTML = '<p class="vazio">Nenhuma conta com esses filtros.</p>';
+  } else {
+    let html = '';
+    let diaAtual = null;
+    lista.forEach((b) => {
+      const venc = b.vencimento || b.data;
+      if (venc !== diaAtual) {
+        diaAtual = venc;
+        const faltam = N.diasEntre(hoje, venc);
+        const quando =
+          faltam === 0 ? 'hoje' : faltam === 1 ? 'amanhã' : faltam > 0 ? 'em ' + faltam + ' dias' : 'há ' + -faltam + ' dias';
+        html += '<div class="dia-grupo"><span>' + esc(N.formatarData(venc)) + ' · ' + esc(quando) + '</span></div>';
+      }
+      const s = N.situacaoBoleto(b, hoje);
+      const inicial = String(b.descricao || '?').trim().charAt(0).toUpperCase();
+      const meta = [];
+      if (b.parcela) meta.push('parcela ' + b.parcela.n + '/' + b.parcela.de);
+      if (b.categoria) meta.push(esc(nomeCategoria(b.categoria)));
+      if (b.carteira) meta.push(esc(nomeCarteira(b.carteira)));
+      if (b.status === 'realizado' && b.pagoEm) {
+        const atraso = N.diasEntre(venc, b.pagoEm);
+        meta.push('pago em ' + N.formatarData(b.pagoEm) + (atraso > 0 ? ' (' + atraso + 'd atrasado)' : ''));
+      }
+      if (b.obs) meta.push(esc(b.obs));
+
+      html +=
+        '<div class="boleto ' + s + '" data-luz="' + CORES_SITUACAO[s] + '">' +
+        '<div class="boleto-icone">' + esc(inicial) + '</div>' +
+        '<div class="boleto-corpo">' +
+        '<div class="boleto-nome">' + esc(b.descricao) + '</div>' +
+        '<div class="boleto-meta"><span class="selo ' + CORES_SITUACAO[s] + '">' + ROTULOS_SITUACAO[s] + '</span>' +
+        (meta.length ? '<span>' + meta.join(' · ') + '</span>' : '') +
+        (b.linha ? '<span class="chave">' + esc(N.soDigitos(b.linha).slice(0, 6)) + '…</span>' : '') +
+        '</div></div>' +
+        '<div class="boleto-valor">' + esc(dinheiro(b.valor)) + '</div>' +
+        '<div class="boleto-acoes">' +
+        (b.linha ? '<button class="btn-icone" data-acao="copiar-linha" data-id="' + esc(b.id) + '" title="Copiar linha digitável">⧉</button>' : '') +
+        '<button class="btn-icone" data-acao="editar-boleto" data-id="' + esc(b.id) + '" title="Editar">✎</button>' +
+        '<button class="btn-icone perigo" data-acao="apagar-boleto" data-id="' + esc(b.id) + '" title="Apagar">✕</button>' +
+        '<button class="switch' + (s === 'pago' ? ' ligado' : '') + '" data-acao="pagar-boleto" data-id="' + esc(b.id) +
+        '" title="' + (s === 'pago' ? 'Desmarcar pagamento' : 'Marcar como pago') + '" aria-pressed="' + (s === 'pago') + '"></button>' +
+        '</div></div>';
+    });
+    $('#lista-boletos').innerHTML = html;
+  }
+
+  pintarBoletosVersusCaixa();
+}
+
+/** O mes que vem cabe no caixa? Compara o que vence com o que a curva projeta. */
+function pintarBoletosVersusCaixa() {
+  const hoje = N.hojeIso();
+  const proximo = N.mesDe(N.somarMeses(hoje, 1));
+  const ate = N.diaDoMes(proximo, 31);
+  const horizonte = Math.max(1, (N.diasEntre(hoje, ate) || 30) + 1);
+
+  const doProximo = boletosDe().filter((b) => N.mesDe(b.vencimento || b.data) === proximo);
+  const r = N.resumoBoletos(doProximo, hoje);
+  const proj = projecao(horizonte);
+  const folga = proj.menorSaldo - proj.piso;
+
+  if (!doProximo.length) {
+    $('#boletos-versus-caixa').innerHTML =
+      '<p class="vazio">Nenhuma conta lançada para ' + esc(N.formatarMes(proximo)) + ' ainda. Guarde os boletos assim que eles chegarem — é o que transforma susto em agenda.</p>';
+    return;
+  }
+
+  const pct = r.total > 0 ? r.pago / r.total : 0;
+  $('#boletos-versus-caixa').innerHTML =
+    '<div class="linha" style="justify-content:space-between;align-items:baseline">' +
+    '<b>' + esc(N.formatarMes(proximo)) + '</b>' +
+    '<span class="fraco">' + esc(dinheiro(r.pago)) + ' pago de ' + esc(dinheiro(r.total)) + '</span></div>' +
+    '<div class="barra-fundo" style="height:12px;margin-top:8px"><div class="barra-cheia ok" style="width:' + (pct * 100).toFixed(1) + '%"></div></div>' +
+    '<table style="margin-top:14px"><tbody>' +
+    '<tr><td>Vence em ' + esc(N.formatarMes(proximo)) + '</td><td class="dir">' + esc(dinheiro(r.total)) + '</td></tr>' +
+    '<tr><td>Ainda em aberto</td><td class="dir vermelho">' + esc(dinheiro(r.aberto)) + '</td></tr>' +
+    '<tr><td>Menor saldo projetado até lá</td><td class="dir ' + (proj.menorSaldo < proj.piso ? 'vermelho' : 'verde') + '">' + esc(dinheiro(proj.menorSaldo)) + '</td></tr>' +
+    '</tbody></table>' +
+    '<div class="aviso ' + (folga >= 0 ? 'bom' : 'ruim') + '" style="margin-top:12px"><span class="aviso-icone">' + (folga >= 0 ? '✓' : '▲') + '</span><div>' +
+    (folga >= 0
+      ? 'Cabe: com essas contas dentro da conta, o pior dia ainda fica <b>' + esc(dinheiro(folga)) + '</b> acima do piso de segurança.'
+      : 'Não cabe. Com essas contas, o caixa fura o piso em <b>' + esc(N.formatarData(proj.dataFuraPiso || proj.dataMenorSaldo)) + '</b>, faltando <b>' + esc(dinheiro(-folga)) + '</b>. Dá para negociar prazo de alguma delas, antecipar recebimento ou segurar compra.') +
+    '</div>';
+}
+
+function limparFormBoleto() {
+  vista.editandoBoleto = null;
+  $('#form-boleto').reset();
+  $('#b-linha').value = '';
+  $('#b-parcelas').value = 1;
+  $('#b-vencimento').value = '';
+  $('#selo-leitura').hidden = true;
+  $('#btn-cancelar-boleto').hidden = true;
+  $('#b-parcelas').disabled = false;
+  pintarBoletos();
+}
+
+function editarBoleto(id) {
+  const b = acharLanc(id);
+  if (!b) return;
+  vista.editandoBoleto = id;
+  $('#b-beneficiario').value = b.descricao || '';
+  $('#b-valor').value = (b.valor / 100).toFixed(2).replace('.', ',');
+  $('#b-vencimento').value = b.vencimento || b.data;
+  $('#b-categoria').value = b.categoria || '';
+  $('#b-carteira').value = b.carteira || '';
+  $('#b-obs').value = b.obs || '';
+  $('#b-linha').value = b.linha || '';
+  $('#b-pago').checked = b.status === 'realizado';
+  $('#b-parcelas').value = 1;
+  $('#b-parcelas').disabled = true; // editar nao re-parcela
+  $('#btn-cancelar-boleto').hidden = false;
+  trocarAba('boletos');
+  $('#b-beneficiario').focus();
 }
 
 /* ================================================= TELA: LANCAMENTOS ==== */
@@ -1167,6 +1407,7 @@ function pintarAjustes() {
 
 function pintar() {
   pintarPainel();
+  pintarBoletos();
   pintarFormLancamento();
   pintarLancamentos();
   pintarAgenda();
@@ -1279,6 +1520,122 @@ function ligarEventos() {
             ? 'A primeira data em que esse pagamento cabe é <b>' + esc(N.formatarData(quando.data)) + '</b> (em ' + quando.emDias + ' dias).'
             : 'Dentro de ' + proj.horizonte + ' dias não existe data em que ele caiba — esse valor é grande demais para o caixa atual.')) +
       '</div></div>';
+  });
+
+  /* ---------- boletos ---------- */
+
+  $('#btn-ler-linha').addEventListener('click', () => {
+    const lido = N.lerLinhaDigitavel($('#b-linha').value, N.hojeIso());
+    const selo = $('#selo-leitura');
+    selo.hidden = false;
+
+    if (!lido.valido) {
+      selo.className = 'selo vermelho';
+      selo.textContent = 'não consegui ler';
+      toast('Código inválido: ' + lido.motivo, true);
+      return;
+    }
+
+    const partes = [];
+    if (lido.valor) {
+      $('#b-valor').value = (lido.valor / 100).toFixed(2).replace('.', ',');
+      partes.push('valor ' + dinheiro(lido.valor));
+    }
+    if (lido.vencimento) {
+      $('#b-vencimento').value = lido.vencimento;
+      partes.push('vence ' + N.formatarData(lido.vencimento));
+    }
+    $('#b-linha').value = N.formatarLinhaDigitavel($('#b-linha').value);
+
+    selo.className = 'selo ' + (partes.length ? 'verde' : 'amarelo');
+    selo.textContent = lido.tipo === 'arrecadacao' ? 'conta de consumo' : 'boleto banco ' + lido.banco;
+
+    if (!partes.length) {
+      toast('Li o código, mas ele não traz valor nem vencimento. Preencha na mão.', true);
+      return;
+    }
+    toast('Li do código: ' + partes.join(' · ') + '. Confira antes de salvar.');
+  });
+
+  $('#btn-cancelar-boleto').addEventListener('click', limparFormBoleto);
+
+  $('#form-boleto').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const valor = N.paraCentavos($('#b-valor').value);
+    const vencimento = $('#b-vencimento').value;
+    if (!valor || valor <= 0) {
+      toast('Valor inválido.', true);
+      return;
+    }
+    if (!vencimento) {
+      toast('Falta o vencimento.', true);
+      return;
+    }
+
+    const pago = $('#b-pago').checked;
+    const base = {
+      boleto: true,
+      tipo: 'saida',
+      descricao: $('#b-beneficiario').value.trim(),
+      valor: valor,
+      vencimento: vencimento,
+      categoria: $('#b-categoria').value,
+      carteira: $('#b-carteira').value,
+      obs: $('#b-obs').value.trim(),
+      linha: N.soDigitos($('#b-linha').value) || '',
+    };
+
+    if (vista.editandoBoleto) {
+      const b = acharLanc(vista.editandoBoleto);
+      Object.assign(b, base, {
+        status: pago ? 'realizado' : 'previsto',
+        pagoEm: pago ? b.pagoEm || N.hojeIso() : null,
+      });
+      b.data = pago ? b.pagoEm : vencimento;
+      toast('Boleto atualizado.');
+    } else {
+      const quantas = Math.max(1, Math.min(60, +$('#b-parcelas').value || 1));
+      const parcelas = N.gerarParcelas(base, quantas);
+      parcelas.forEach((p) => {
+        const estePago = pago && p.parcela === null; // so a conta unica entra ja paga
+        estado.lancamentos.push(
+          Object.assign({}, p, {
+            id: novoId(),
+            criadoEm: new Date().toISOString(),
+            status: estePago ? 'realizado' : 'previsto',
+            pagoEm: estePago ? N.hojeIso() : null,
+            data: estePago ? N.hojeIso() : p.vencimento,
+            descricao: p.parcela ? p.descricao + ' (' + p.parcela.n + '/' + p.parcela.de + ')' : p.descricao,
+          })
+        );
+      });
+      toast(quantas > 1 ? quantas + ' parcelas guardadas.' : 'Boleto guardado.');
+    }
+
+    limparFormBoleto();
+    salvar();
+    pintar();
+  });
+
+  $$('#pilulas-mes-boleto .pilula').forEach((b) =>
+    b.addEventListener('click', () => {
+      vista.boletos.quando = b.dataset.quando;
+      $$('#pilulas-mes-boleto .pilula').forEach((x) => x.classList.toggle('ativa', x === b));
+      pintarBoletos();
+    })
+  );
+
+  $$('#pilulas-status-boleto .pilula').forEach((b) =>
+    b.addEventListener('click', () => {
+      vista.boletos.status = b.dataset.status;
+      $$('#pilulas-status-boleto .pilula').forEach((x) => x.classList.toggle('ativa', x === b));
+      pintarBoletos();
+    })
+  );
+
+  $('#b-busca').addEventListener('input', () => {
+    vista.boletos.busca = $('#b-busca').value;
+    pintarBoletos();
   });
 
   /* ---------- lancamentos ---------- */
@@ -1713,6 +2070,54 @@ function ligarEventos() {
     const acao = btn.dataset.acao;
 
     if (acao === 'editar') editarLancamento(id);
+
+    if (acao === 'editar-boleto') editarBoleto(id);
+
+    if (acao === 'pagar-boleto') {
+      const b = acharLanc(id);
+      if (!b) return;
+      if (b.status === 'realizado') {
+        b.status = 'previsto';
+        b.pagoEm = null;
+        b.data = b.vencimento || b.data;
+        toast('Pagamento desfeito: a conta voltou para em aberto.');
+      } else {
+        b.status = 'realizado';
+        b.pagoEm = N.hojeIso();
+        b.data = b.pagoEm;
+        // sem hora de registro o saldo da carteira nao se mexeria hoje
+        if (!b.criadoEm) b.criadoEm = new Date().toISOString();
+        const atraso = N.diasEntre(b.vencimento || b.data, b.pagoEm);
+        toast('Pago: ' + b.descricao + ' · ' + dinheiro(b.valor) + (atraso > 0 ? ' (com ' + atraso + ' dia(s) de atraso)' : ''));
+      }
+      salvar();
+      pintar();
+    }
+
+    if (acao === 'apagar-boleto') {
+      const b = acharLanc(id);
+      if (!b) return;
+      if (!confirm('Apagar o boleto “' + b.descricao + '” de ' + dinheiro(b.valor) + '?')) return;
+      estado.lancamentos = estado.lancamentos.filter((x) => x.id !== id);
+      if (vista.editandoBoleto === id) limparFormBoleto();
+      salvar();
+      pintar();
+      toast('Boleto apagado.');
+    }
+
+    if (acao === 'copiar-linha') {
+      const b = acharLanc(id);
+      if (!b || !b.linha) return;
+      const texto = N.soDigitos(b.linha);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(
+          () => toast('Linha digitável copiada.'),
+          () => toast('Não consegui copiar. O código é ' + texto, true)
+        );
+      } else {
+        toast('Linha digitável: ' + texto);
+      }
+    }
 
     if (acao === 'apagar') {
       const l = acharLanc(id);

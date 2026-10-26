@@ -845,6 +845,169 @@ function classificarLote(candidatos, regras) {
   });
 }
 
+/* ========================================================= BOLETOS ====== */
+
+/**
+ * Situacao de um boleto, do ponto de vista de hoje.
+ * pago | vencido | hoje | perto (vence em ate 3 dias) | aberto
+ */
+function situacaoBoleto(boleto, hoje) {
+  const b = boleto || {};
+  if (b.status === 'realizado') return 'pago';
+  const h = hoje || hojeIso();
+  const venc = b.vencimento || b.data;
+  if (!venc) return 'aberto';
+  if (venc < h) return 'vencido';
+  if (venc === h) return 'hoje';
+  const faltam = diasEntre(h, venc);
+  return faltam !== null && faltam <= 3 ? 'perto' : 'aberto';
+}
+
+/**
+ * Resumo de uma lista de boletos: quanto tem, quanto ja foi pago, quanto ainda
+ * vai doer e — o numero que importa — quanto esta VENCIDO.
+ */
+function resumoBoletos(boletos, hoje) {
+  const h = hoje || hojeIso();
+  const resumo = {
+    total: 0,
+    pago: 0,
+    aberto: 0,
+    vencido: 0,
+    venceHoje: 0,
+    proximos7: 0,
+    quantidade: 0,
+    quantidadeVencida: 0,
+    porSituacao: { pago: 0, vencido: 0, hoje: 0, perto: 0, aberto: 0 },
+  };
+  (boletos || []).forEach((b) => {
+    const v = b.valor || 0;
+    const s = situacaoBoleto(b, h);
+    resumo.quantidade++;
+    resumo.total += v;
+    resumo.porSituacao[s] = (resumo.porSituacao[s] || 0) + 1;
+    if (s === 'pago') {
+      resumo.pago += v;
+      return;
+    }
+    resumo.aberto += v;
+    if (s === 'vencido') {
+      resumo.vencido += v;
+      resumo.quantidadeVencida++;
+    }
+    if (s === 'hoje') resumo.venceHoje += v;
+    const faltam = diasEntre(h, b.vencimento || b.data);
+    if (faltam !== null && faltam >= 0 && faltam <= 7) resumo.proximos7 += v;
+  });
+  return resumo;
+}
+
+/**
+ * Quebra uma conta em parcelas mensais. A ultima parcela absorve o centavo que
+ * sobra da divisao, para a soma das parcelas bater com o total exato.
+ */
+function gerarParcelas(base, quantidade) {
+  const n = Math.max(1, Math.min(60, quantidade || 1));
+  const total = (base || {}).valor || 0;
+  const fatia = Math.floor(total / n);
+  const parcelas = [];
+  for (let i = 0; i < n; i++) {
+    const ultima = i === n - 1;
+    parcelas.push(
+      Object.assign({}, base, {
+        valor: ultima ? total - fatia * (n - 1) : fatia,
+        vencimento: somarMeses(base.vencimento, i),
+        parcela: n > 1 ? { n: i + 1, de: n } : null,
+      })
+    );
+  }
+  return parcelas;
+}
+
+/** So os digitos de um texto. */
+function soDigitos(txt) {
+  return String(txt || '').replace(/\D/g, '');
+}
+
+const BASE_FATOR = '1997-10-07';
+// Em 21/02/2025 o fator chegou a 9999 e recomecou em 1000 no dia seguinte.
+const VIRADA_FATOR = '2025-02-22';
+
+/**
+ * Le a linha digitavel de um boleto e devolve valor e vencimento.
+ *
+ * Dois formatos, bem diferentes:
+ *
+ * 1. BOLETO BANCARIO (47 digitos). O codigo de barras por tras tem 44 digitos:
+ *    banco(3) moeda(1) DV(1) fator de vencimento(4) valor(10) campo livre(25).
+ *    Na linha digitavel o fator e o valor ficam nos 14 ultimos digitos.
+ *    O "fator" e a quantidade de dias desde 07/10/1997 — e, desde a virada de
+ *    2025, desde 22/02/2025 quando a contagem recomecou em 1000.
+ *
+ * 2. ARRECADACAO / CONCESSIONARIA (48 digitos, comeca com 8): conta de luz,
+ *    agua, imposto. NAO tem data de vencimento no codigo, so valor — e so
+ *    quando o terceiro digito e 6 ou 7 (valor em real). 8 e 9 sao quantidade
+ *    de moeda, que nao da para ler como dinheiro.
+ */
+function lerLinhaDigitavel(texto, hoje) {
+  const d = soDigitos(texto);
+  if (!d) return { valido: false, motivo: 'vazio' };
+
+  if (d.length === 48 || (d.length === 44 && d[0] === '8')) {
+    // arrecadacao: tira o DV de cada bloco de 12 para voltar aos 44 digitos
+    const barras = d.length === 48 ? d.slice(0, 11) + d.slice(12, 23) + d.slice(24, 35) + d.slice(36, 47) : d;
+    const idValor = barras[2];
+    const bruto = barras.slice(4, 15);
+    const valor = idValor === '6' || idValor === '7' ? Number(bruto) : null;
+    return {
+      valido: true,
+      tipo: 'arrecadacao',
+      segmento: barras[1],
+      banco: null,
+      valor: valor !== null && Number.isFinite(valor) && valor > 0 ? valor : null,
+      vencimento: null,
+      motivo: 'conta de concessionária não traz vencimento no código',
+    };
+  }
+
+  if (d.length !== 47) {
+    return { valido: false, motivo: 'a linha digitável tem 47 dígitos (boleto) ou 48 (conta de consumo); esta tem ' + d.length };
+  }
+
+  const banco = d.slice(0, 3);
+  const fator = Number(d.slice(33, 37));
+  const valorBruto = Number(d.slice(37, 47));
+  const valor = Number.isFinite(valorBruto) && valorBruto > 0 ? valorBruto : null;
+
+  // O mesmo fator cabe em dois calendarios: o antigo (desde 1997) e o que
+  // recomecou em 1000 na virada de 2025. Ganha o que cai mais perto de hoje —
+  // boleto e papel de curto prazo, nao de 2002 nem de 2049.
+  let vencimento = null;
+  if (fator > 0) {
+    const h = hoje || hojeIso();
+    const candidatos = [somarDias(BASE_FATOR, fator)];
+    if (fator >= 1000) candidatos.push(somarDias(VIRADA_FATOR, fator - 1000));
+    vencimento = candidatos.sort((a, b) => Math.abs(diasEntre(h, a)) - Math.abs(diasEntre(h, b)))[0];
+  }
+
+  return {
+    valido: true,
+    tipo: 'banco',
+    banco: banco,
+    valor: valor,
+    vencimento: vencimento,
+    fator: fator,
+  };
+}
+
+/** Linha digitavel formatada em blocos, so para ler na tela. */
+function formatarLinhaDigitavel(texto) {
+  const d = soDigitos(texto);
+  if (d.length === 47) return d.replace(/^(\d{5})(\d{5})(\d{5})(\d{6})(\d{5})(\d{6})(\d{1})(\d{14})$/, '$1.$2 $3.$4 $5.$6 $7 $8');
+  if (d.length === 48) return d.replace(/(\d{12})(?=\d)/g, '$1 ').trim();
+  return d;
+}
+
 /* ========================================================= EXPORTA ====== */
 
 const Nucleo = {
@@ -888,6 +1051,12 @@ const Nucleo = {
   separarNovos: separarNovos,
   aplicarRegras: aplicarRegras,
   classificarLote: classificarLote,
+  situacaoBoleto: situacaoBoleto,
+  resumoBoletos: resumoBoletos,
+  gerarParcelas: gerarParcelas,
+  soDigitos: soDigitos,
+  lerLinhaDigitavel: lerLinhaDigitavel,
+  formatarLinhaDigitavel: formatarLinhaDigitavel,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = Nucleo;

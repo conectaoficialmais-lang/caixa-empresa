@@ -522,6 +522,88 @@ conferir('colunas separadas: credito e entrada', mapeadoCD.candidatos[0].tipo, '
 conferir('colunas separadas: debito e saida', mapeadoCD.candidatos[1].tipo, 'saida');
 conferir('colunas separadas: valor do debito', mapeadoCD.candidatos[1].valor, 250000);
 
+/* ------------------------------------------------------------ boletos -- */
+
+const HOJE_B = '2026-10-26';
+const BOLETOS = [
+  { id: 'b1', descricao: 'Energia', valor: 46500, vencimento: '2026-10-20', status: 'previsto' },
+  { id: 'b2', descricao: 'Fornecedor', valor: 950000, vencimento: '2026-10-26', status: 'previsto' },
+  { id: 'b3', descricao: 'Internet', valor: 19900, vencimento: '2026-10-28', status: 'previsto' },
+  { id: 'b4', descricao: 'Contador', valor: 25000, vencimento: '2026-11-10', status: 'previsto' },
+  { id: 'b5', descricao: 'Imposto', valor: 190000, vencimento: '2026-10-20', status: 'realizado' },
+];
+
+conferir('boleto pago e pago, mesmo vencido', N.situacaoBoleto(BOLETOS[4], HOJE_B), 'pago');
+conferir('boleto com vencimento passado esta vencido', N.situacaoBoleto(BOLETOS[0], HOJE_B), 'vencido');
+conferir('boleto que vence hoje', N.situacaoBoleto(BOLETOS[1], HOJE_B), 'hoje');
+conferir('boleto que vence em 2 dias esta perto', N.situacaoBoleto(BOLETOS[2], HOJE_B), 'perto');
+conferir('boleto distante esta aberto', N.situacaoBoleto(BOLETOS[3], HOJE_B), 'aberto');
+
+const resumoB = N.resumoBoletos(BOLETOS, HOJE_B);
+conferir('resumo soma tudo', resumoB.total, 46500 + 950000 + 19900 + 25000 + 190000);
+conferir('resumo separa o que ja foi pago', resumoB.pago, 190000);
+conferir('resumo separa o que falta pagar', resumoB.aberto, 46500 + 950000 + 19900 + 25000);
+conferir('resumo acusa o vencido', resumoB.vencido, 46500);
+conferir('resumo conta quantos venceram', resumoB.quantidadeVencida, 1);
+conferir('resumo separa o que vence hoje', resumoB.venceHoje, 950000);
+conferir('vencido nao entra nos proximos 7 dias', resumoB.proximos7, 950000 + 19900);
+
+/* ---- parcelamento ---- */
+
+const parcelas = N.gerarParcelas({ descricao: 'Fornecedor', valor: 100000, vencimento: '2026-10-31', categoria: 'estoque' }, 3);
+conferir('gera 3 parcelas', parcelas.length, 3);
+conferir('a soma das parcelas bate com o total', parcelas.reduce((s, p) => s + p.valor, 0), 100000);
+conferir('o centavo que sobra vai na ultima', parcelas[2].valor, 33334);
+conferir('vencimentos caem mes a mes', parcelas.map((p) => p.vencimento).join(','), '2026-10-31,2026-11-30,2026-12-31');
+conferir('parcela numerada', parcelas[1].parcela.n + '/' + parcelas[1].parcela.de, '2/3');
+conferir('parcela unica nao recebe numeracao', N.gerarParcelas({ valor: 5000, vencimento: '2026-10-10' }, 1)[0].parcela, null);
+conferir('parcela unica mantem o valor', N.gerarParcelas({ valor: 5000, vencimento: '2026-10-10' }, 1)[0].valor, 5000);
+
+/* ---- linha digitavel ---- */
+
+// monta uma linha de 47 digitos com fator e valor nas posicoes certas
+function linhaFake(banco, fator, centavos) {
+  const corpo = (banco + '9').padEnd(32, '0') + '0';
+  return corpo.slice(0, 33) + String(fator).padStart(4, '0') + String(centavos).padStart(10, '0');
+}
+
+const lido1 = N.lerLinhaDigitavel(linhaFake('341', 1631, 125050), HOJE_B);
+conferir('le o banco', lido1.banco, '341');
+conferir('le o valor em centavos', lido1.valor, 125050);
+conferir('le o vencimento pelo fator novo', lido1.vencimento, '2026-11-15');
+conferir('marca como boleto bancario', lido1.tipo, 'banco');
+
+conferir('fator 1000 e o primeiro dia do ciclo novo', N.lerLinhaDigitavel(linhaFake('001', 1000, 1000), HOJE_B).vencimento, '2025-02-22');
+conferir(
+  'fator do ciclo antigo continua valendo quando cai mais perto',
+  N.lerLinhaDigitavel(linhaFake('001', 9999, 1000), '2025-03-01').vencimento,
+  '2025-02-21'
+);
+conferir('valor zerado vira nulo (boleto em aberto)', N.lerLinhaDigitavel(linhaFake('237', 1631, 0), HOJE_B).valor, null);
+conferir('aceita linha com pontos e espacos', N.lerLinhaDigitavel('34191.09008 12345.678901 23456.789012 3 ' + '16310000125050'.slice(0, 14), HOJE_B).valor, 125050);
+
+conferir('linha curta e recusada', N.lerLinhaDigitavel('12345').valido, false);
+conferir('texto vazio e recusado', N.lerLinhaDigitavel('').valido, false);
+
+// conta de concessionaria: codigo de barras de 44 (8 + segmento + id valor + DV
+// + valor(11) + campo livre(25)), que na linha digitavel vira 4 blocos de 11
+// digitos, cada um com seu DV — e esse DV que o leitor precisa descartar
+function linhaArrecFake(idValor, centavos) {
+  const barras = '8' + '2' + idValor + '0' + String(centavos).padStart(11, '0') + '7'.repeat(29);
+  const bloco = (i) => barras.slice(i * 11, i * 11 + 11) + '9';
+  return bloco(0) + bloco(1) + bloco(2) + bloco(3);
+}
+
+const arrec = linhaArrecFake('6', 8750);
+conferir('conta de consumo tem 48 digitos no teste', arrec.length, 48);
+const lidoArrec = N.lerLinhaDigitavel(arrec, HOJE_B);
+conferir('reconhece conta de concessionaria', lidoArrec.tipo, 'arrecadacao');
+conferir('le o valor da conta de consumo', lidoArrec.valor, 8750);
+conferir('conta de consumo nao tem vencimento no codigo', lidoArrec.vencimento, null);
+conferir('id de valor 8 e quantidade de moeda, nao dinheiro', N.lerLinhaDigitavel(linhaArrecFake('8', 8750), HOJE_B).valor, null);
+
+conferir('formata a linha de 47 em blocos', N.formatarLinhaDigitavel('34191090081234567890123456789012316310000125050').indexOf('.') > 0, true);
+
 /* ------------------------------------------------------------ fim ------ */
 
 console.log('');
