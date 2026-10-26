@@ -9,7 +9,7 @@ volta?*
 
 Site estático, sem build e sem dependências: HTML, CSS e três arquivos de JavaScript.
 
-![testes](https://img.shields.io/badge/testes-130%20passando-brightgreen)
+![testes](https://img.shields.io/badge/testes-156%20passando-brightgreen)
 ![dependências](https://img.shields.io/badge/depend%C3%AAncias-0-blue)
 
 ---
@@ -72,7 +72,7 @@ compra livre**.
 ## As contas
 
 Elas vivem todas em [`assets/nucleo.js`](assets/nucleo.js), que é puro (não toca na tela) e tem
-130 testes em [`tools/testar.js`](tools/testar.js).
+156 testes em [`tools/testar.js`](tools/testar.js).
 
 ### Projeção de saldo
 
@@ -86,6 +86,21 @@ saldo de hoje   = disponível de todas as carteiras
 ```
 
 Transferência não entra em lugar nenhum dessa conta.
+
+### Saldo das carteiras
+
+O valor digitado em Ajustes é um **saldo conferido numa data** (“no dia X o banco dizia tanto”).
+Dali para frente o saldo anda sozinho:
+
+```
+saldo de hoje = saldo conferido + lançamentos realizados com data posterior à conferência
+```
+
+Entrada soma, saída subtrai, e transferência subtrai da origem e soma no destino — por isso ela
+move dinheiro entre carteiras sem mudar o caixa total. Lançamento com data **até** a conferência é
+ignorado: ele já está dentro do saldo que o banco mostrou, o que também é o que impede uma
+importação de extrato antigo de contar duas vezes. Quando o app divergir do banco, basta digitar o
+valor real: a data de conferência se atualiza sozinha.
 
 ### Orçamento
 
@@ -153,7 +168,7 @@ assets/nucleo.js    as contas, puras e testadas (roda no navegador e no Node)
 assets/app.js       estado, telas, gráficos e eventos
 assets/exemplo.js   dados fictícios do botão "carregar exemplo"
 assets/style.css    tema escuro e claro
-tools/testar.js     130 testes das funções puras
+tools/testar.js     156 testes das funções puras
 tools/servidor.js   servidor estático mínimo
 ```
 

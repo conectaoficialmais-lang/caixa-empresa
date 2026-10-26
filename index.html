@@ -245,7 +245,7 @@
     <div id="lista-envelopes" class="grade grade-3"></div>
     <div class="linha" style="margin-top:14px">
       <button id="btn-add-envelope" class="btn btn-fantasma btn-mini" type="button">+ Novo envelope</button>
-      <button id="btn-virar-mes" class="btn btn-fantasma btn-mini" type="button">Virar o mês (o que sobrou fica acumulado)</button>
+      <button id="btn-virar-mes" class="btn btn-fantasma btn-mini" type="button">Fechar o mês passado (a sobra vira acumulado)</button>
     </div>
     <p class="ajuda">O <b>acumulado</b> é o que sobrou de meses anteriores e continua disponível naquele envelope — é assim que se junta dinheiro para uma compra grande sem estourar o mês.</p>
   </div>
@@ -426,8 +426,11 @@
   <div class="cartao">
     <div class="cartao-cabeca"><h2>Carteiras</h2><span class="selo" id="selo-carteiras">—</span></div>
     <p class="explica">
-      Carteira é cada lugar onde o seu dinheiro está. <b>Disponível</b> é o que dá para gastar hoje;
-      <b>a liberar</b> é venda já feita que o marketplace ainda não soltou, e <b>dias para liberar</b> é o
+      Carteira é cada lugar onde o seu dinheiro está. O <b>saldo conferido</b> é o que o banco mostrava
+      no dia em que você digitou — daí para frente o app move sozinho, com os lançamentos realizados,
+      e a coluna <b>hoje</b> é o resultado. Quando o saldo do app divergir do banco, digite o valor real:
+      a data de conferência se atualiza e o histórico anterior não é contado de novo.
+      <b>A liberar</b> é venda já feita que o marketplace ainda não soltou, e <b>dias para liberar</b> é o
       prazo médio disso cair. O caixa da empresa é a soma de todas — nunca só o saldo do banco.
     </p>
     <div id="tabela-carteiras" class="rolagem"></div>

@@ -84,6 +84,70 @@ conferir('caixa total e disponivel + a liberar', soma.total, soma.disponivel + s
 conferir('reserva so a carteira marcada', soma.reserva, 100000);
 conferir('livre e disponivel menos reserva', soma.livre, soma.disponivel - 100000);
 
+/* --------------------------------- saldo que anda com os lancamentos ---- */
+
+const CONFERIDAS = [
+  { id: 'inter', nome: 'Inter', disponivel: 1000000, aLiberar: 0, diasLiberacao: 0, conferidoEm: '2026-10-20' },
+  { id: 'mp', nome: 'Mercado Pago', disponivel: 500000, aLiberar: 0, diasLiberacao: 0, conferidoEm: '2026-10-20' },
+];
+
+const MOVIMENTOS = [
+  { id: 'a', data: '2026-10-18', tipo: 'saida', valor: 300000, carteira: 'inter', status: 'realizado' },
+  { id: 'b', data: '2026-10-22', tipo: 'saida', valor: 200000, carteira: 'inter', status: 'realizado' },
+  { id: 'c', data: '2026-10-23', tipo: 'entrada', valor: 150000, carteira: 'inter', status: 'realizado' },
+  { id: 'd', data: '2026-10-24', tipo: 'transferencia', valor: 400000, carteira: 'mp', carteiraDestino: 'inter', status: 'realizado' },
+  { id: 'e', data: '2026-10-25', tipo: 'saida', valor: 900000, carteira: 'inter', status: 'previsto' },
+];
+
+conferir('lancamento antes da conferencia nao mexe no saldo', N.saldoDaCarteira(CONFERIDAS[0], [MOVIMENTOS[0]]), 1000000);
+conferir('saida depois da conferencia baixa o saldo', N.saldoDaCarteira(CONFERIDAS[0], [MOVIMENTOS[1]]), 800000);
+conferir('entrada depois da conferencia sobe o saldo', N.saldoDaCarteira(CONFERIDAS[0], [MOVIMENTOS[2]]), 1150000);
+conferir('previsto nao mexe no saldo de hoje', N.saldoDaCarteira(CONFERIDAS[0], [MOVIMENTOS[4]]), 1000000);
+conferir('carteira sem conferencia fica no valor digitado', N.saldoDaCarteira({ id: 'x', disponivel: 777 }, MOVIMENTOS), 777);
+
+// no dia da conferencia vale o relogio
+const CONF_HORA = { id: 'inter', disponivel: 1000000, conferidoEm: '2026-10-20', conferidoEmTs: '2026-10-20T14:00:00.000Z' };
+conferir(
+  'lancado depois de conferir, no mesmo dia, conta',
+  N.saldoDaCarteira(CONF_HORA, [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado', criadoEm: '2026-10-20T17:00:00.000Z' }]),
+  950000
+);
+conferir(
+  'lancado antes de conferir, no mesmo dia, nao conta',
+  N.saldoDaCarteira(CONF_HORA, [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado', criadoEm: '2026-10-20T09:00:00.000Z' }]),
+  1000000
+);
+conferir(
+  'sem hora da conferencia, o que foi digitado conta',
+  N.saldoDaCarteira(
+    { id: 'inter', disponivel: 1000000, conferidoEm: '2026-10-20' },
+    [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado', criadoEm: '2026-10-20T09:00:00.000Z' }]
+  ),
+  950000
+);
+conferir(
+  'sem hora da conferencia, linha de extrato importada continua de fora',
+  N.saldoDaCarteira(
+    { id: 'inter', disponivel: 1000000, conferidoEm: '2026-10-20' },
+    [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado' }]
+  ),
+  1000000
+);
+conferir(
+  'sem hora de registro, no dia da conferencia, nao conta',
+  N.saldoDaCarteira(CONF_HORA, [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado' }]),
+  1000000
+);
+
+conferir('transferencia sai da origem', N.saldoDaCarteira(CONFERIDAS[1], [MOVIMENTOS[3]]), 100000);
+conferir('transferencia entra no destino', N.saldoDaCarteira(CONFERIDAS[0], [MOVIMENTOS[3]]), 1400000);
+
+const somaConferida = N.somarCarteiras(CONFERIDAS, MOVIMENTOS);
+const somaSoTransferencia = N.somarCarteiras(CONFERIDAS, [MOVIMENTOS[3]]);
+conferir('transferencia nao muda o caixa total', somaSoTransferencia.total, 1500000);
+conferir('soma derivada bate com a conta na mao', somaConferida.disponivel, 1000000 - 200000 + 150000 + 400000 + (500000 - 400000));
+conferir('sem lancamentos a soma usa o valor digitado', N.somarCarteiras(CONFERIDAS).disponivel, 1500000);
+
 /* ------------------------------------------------------- recorrentes ---- */
 
 const RECORRENTES = [
@@ -205,6 +269,52 @@ const projPiso = N.projetar({
 conferir('acusa que fura o piso', projPiso.furaPiso, true);
 conferir('diz o dia em que fura', projPiso.dataFuraPiso, '2026-10-28');
 conferir('nao marca negativo quando so fura o piso', projPiso.negativa, false);
+
+// conta vencida e nao paga nao pode sumir da projecao
+const projVencida = N.projetar({
+  carteiras: [{ id: 'inter', disponivel: 1000000, aLiberar: 0, diasLiberacao: 0 }],
+  recorrentes: [],
+  lancamentos: [{ id: 'v', data: '2026-10-20', tipo: 'saida', descricao: 'Fornecedor atrasado', valor: 300000, status: 'previsto' }],
+  premissas: { usarEntradaDiaria: false },
+  horizonte: 10,
+  hoje: '2026-10-26',
+});
+conferir('conta vencida entra hoje mesmo', projVencida.dias[0].saldo, 700000);
+conferir('conta vencida pesa no saldo final', projVencida.saldoFinal, 700000);
+
+// previsto no proprio dia de hoje tambem conta
+const projHoje = N.projetar({
+  carteiras: [{ id: 'inter', disponivel: 1000000, aLiberar: 0, diasLiberacao: 0 }],
+  recorrentes: [],
+  lancamentos: [{ id: 'h', data: '2026-10-26', tipo: 'saida', valor: 100000, status: 'previsto' }],
+  premissas: { usarEntradaDiaria: false },
+  horizonte: 5,
+  hoje: '2026-10-26',
+});
+conferir('previsto de hoje conta', projHoje.saldoFinal, 900000);
+
+// a premissa de recompra nao pode somar com a compra ja marcada
+const projRecompraLancada = N.projetar({
+  carteiras: [{ id: 'inter', disponivel: 3000000, aLiberar: 0, diasLiberacao: 0 }],
+  recorrentes: [],
+  lancamentos: [{ id: 'p', data: '2026-11-18', tipo: 'saida', categoria: 'estoque', valor: 800000, status: 'previsto' }],
+  premissas: { usarEntradaDiaria: false, recompraMensal: 1000000, diaRecompra: 10 },
+  horizonte: 40,
+  hoje: '2026-10-26',
+});
+// out: nao ha compra lancada, entra a premissa inteira (dia 10/11 ja e novembro,
+// entao no horizonte cai so a de novembro) => 1.000.000 - 800.000 ja lancados
+conferir('premissa de recompra desconta a compra ja marcada', projRecompraLancada.saldoFinal, 3000000 - 800000 - 200000);
+
+const projRecompraMaior = N.projetar({
+  carteiras: [{ id: 'inter', disponivel: 3000000, aLiberar: 0, diasLiberacao: 0 }],
+  recorrentes: [],
+  lancamentos: [{ id: 'p', data: '2026-11-18', tipo: 'saida', categoria: 'estoque', valor: 1500000, status: 'previsto' }],
+  premissas: { usarEntradaDiaria: false, recompraMensal: 1000000, diaRecompra: 10 },
+  horizonte: 40,
+  hoje: '2026-10-26',
+});
+conferir('compra maior que a premissa zera a premissa do mes', projRecompraMaior.saldoFinal, 3000000 - 1500000);
 
 /* -------------------------------------------- simulador e quando posso -- */
 
@@ -378,6 +488,24 @@ const dedupeDentroDoArquivo = N.separarNovos(
   []
 );
 conferir('duplicata dentro do proprio arquivo tambem conta', dedupeDentroDoArquivo.repetidos.length, 1);
+
+const csvPreambulo = N.lerCsv(
+  [
+    'Extrato Conta Corrente',
+    'Periodo: 01/10/2026 a 31/10/2026',
+    'Data Lancamento;Historico;Valor',
+    '05/10/2026;PAGAMENTO FORNECEDOR;-1.000,00',
+  ].join('\n')
+);
+const linhaCab = N.acharCabecalho(csvPreambulo.linhas);
+conferir('acha o cabecalho depois do preambulo', linhaCab, 2);
+const colunasPre = N.adivinharColunas(csvPreambulo.linhas[linhaCab]);
+conferir('"Data Lancamento" nao vira coluna de descricao', colunasPre.descricao, 1);
+conferir('coluna de data continua certa', colunasPre.data, 0);
+const mapeadoPre = N.mapearLinhas(csvPreambulo.linhas, colunasPre, { cabecalhoEm: linhaCab });
+conferir('preambulo nao vira lancamento', mapeadoPre.candidatos.length, 1);
+conferir('le o lancamento depois do preambulo', mapeadoPre.candidatos[0].valor, 100000);
+conferir('sem cabecalho reconhecido, assume a primeira linha', N.acharCabecalho([['a', 'b'], ['c', 'd']]), 0);
 
 const csvVirgula = N.lerCsv('date,description,amount\n2026-10-01,"COMPRA, PARCELADA",-1234.56');
 conferir('detecta virgula como separador', csvVirgula.separador, ',');

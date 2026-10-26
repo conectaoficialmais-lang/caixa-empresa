@@ -212,7 +212,7 @@ function custoFixoMensal() {
 
 /** Piso que a projecao nao deve furar: reserva guardada + colchao. */
 function piso() {
-  return N.somarCarteiras(estado.carteiras).reserva + (estado.premissas.colchao || 0);
+  return N.somarCarteiras(estado.carteiras, estado.lancamentos).reserva + (estado.premissas.colchao || 0);
 }
 
 function projecao(horizonte) {
@@ -250,13 +250,20 @@ function gastoPorEnvelope(mes) {
 /**
  * Base do orcamento: entradas do mes menos tudo que e obrigatorio pagar.
  *
- * As contas fixas do mes contam SEMPRE, tenham sido pagas ou nao — sobra nao e
- * sobra enquanto o imposto e o pro-labore do mes nao estiverem descontados.
- * Para nao contar duas vezes, a saida realizada de uma categoria que ja tem
- * conta fixa no mes e ignorada: ela e o pagamento daquela conta fixa.
+ * As contas fixas obrigatorias do mes contam SEMPRE, tenham sido pagas ou nao —
+ * sobra nao e sobra enquanto o imposto e o pro-labore do mes nao estiverem
+ * descontados. Para nao contar duas vezes, a saida realizada de uma categoria
+ * que ja tem conta fixa no mes e ignorada: ela e o pagamento daquela conta.
+ *
+ * Conta fixa que TEM envelope (mídia paga, por exemplo) NAO sai da base: ela e
+ * gasta de dentro do envelope dela. Tirar das duas pontas descontaria duas vezes.
  */
 function baseDoMes(mes) {
-  const fixas = N.expandirRecorrentes(estado.recorrentes, mes + '-01', N.diaDoMes(mes, 31)).filter((r) => r.tipo === 'saida');
+  const fixas = N.expandirRecorrentes(estado.recorrentes, mes + '-01', N.diaDoMes(mes, 31)).filter((r) => {
+    if (r.tipo !== 'saida') return false;
+    const cat = categoria(r.categoria);
+    return !cat || cat.obrigatoria || !cat.envelope;
+  });
   const categoriasFixas = {};
   fixas.forEach((f) => {
     if (f.categoria) categoriasFixas[f.categoria] = true;
@@ -296,7 +303,7 @@ function orcamentoAtual() {
 }
 
 function reservaAtual() {
-  return N.calcularReserva(estado.reserva, custoFixoMensal(), N.somarCarteiras(estado.carteiras).reserva);
+  return N.calcularReserva(estado.reserva, custoFixoMensal(), N.somarCarteiras(estado.carteiras, estado.lancamentos).reserva);
 }
 
 /* ========================================================= GRAFICOS ==== */
@@ -423,7 +430,7 @@ function graficoMensal(serie) {
 /* ====================================================== TELA: PAINEL ==== */
 
 function pintarPainel() {
-  const soma = N.somarCarteiras(estado.carteiras);
+  const soma = N.somarCarteiras(estado.carteiras, estado.lancamentos);
   const proj = projecao();
   const mes = N.mesDe(N.hojeIso());
   const fechado = N.fecharMes(estado.lancamentos, mes);
@@ -503,9 +510,9 @@ function pintarPainel() {
         .map(
           (c) =>
             '<tr><td>' + esc(c.nome) + (c.reserva ? ' <span class="selo azul">reserva</span>' : '') + '</td>' +
-            '<td class="dir">' + esc(dinheiro(c.disponivel)) + '</td>' +
+            '<td class="dir">' + esc(dinheiro(N.saldoDaCarteira(c, estado.lancamentos))) + '</td>' +
             '<td class="dir fraco">' + esc(dinheiro(c.aLiberar)) + '</td>' +
-            '<td class="dir"><b>' + esc(dinheiro((c.disponivel || 0) + (c.aLiberar || 0))) + '</b></td></tr>'
+            '<td class="dir"><b>' + esc(dinheiro(N.saldoDaCarteira(c, estado.lancamentos) + (c.aLiberar || 0))) + '</b></td></tr>'
         )
         .join('') +
       '</tbody><tfoot><tr><td>Total</td><td class="dir">' + esc(dinheiro(soma.disponivel)) + '</td><td class="dir">' +
@@ -802,7 +809,7 @@ function pintarOrcamento() {
 /* ===================================================== TELA: INVESTIR === */
 
 function pintarInvestir() {
-  const soma = N.somarCarteiras(estado.carteiras);
+  const soma = N.somarCarteiras(estado.carteiras, estado.lancamentos);
   const compromissos = N.compromissosAte(estado.lancamentos, estado.recorrentes, N.hojeIso(), 30);
   const poder = N.poderDeCompra({
     disponivel: soma.disponivel,
@@ -876,7 +883,7 @@ function pintarRelatorios() {
   const mediaEntradas = comMovimento.length ? Math.round(comMovimento.reduce((s, m) => s + m.entradas, 0) / comMovimento.length) : 0;
   const mediaSaidas = comMovimento.length ? Math.round(comMovimento.reduce((s, m) => s + m.saidas, 0) / comMovimento.length) : 0;
   const totalPessoal = serie.reduce((s, m) => s + m.pessoais, 0);
-  const soma = N.somarCarteiras(estado.carteiras);
+  const soma = N.somarCarteiras(estado.carteiras, estado.lancamentos);
 
   const kpis = [
     { rotulo: 'Entrada média por mês', valor: dinheiro(mediaEntradas), nota: comMovimento.length + ' meses com movimento' },
@@ -1009,11 +1016,16 @@ function lerExtrato() {
     return;
   }
   const temCabecalho = $('#imp-cabecalho').checked;
-  const mapa = temCabecalho ? N.adivinharColunas(lido.linhas[0]) : { data: 0, descricao: 1, valor: 2, entrada: -1, saida: -1 };
-  vista.importacao = { linhas: lido.linhas, mapa: mapa, temCabecalho: temCabecalho, candidatos: null };
+  // extrato costuma vir com linhas de preambulo antes dos titulos
+  const cabecalhoEm = temCabecalho ? N.acharCabecalho(lido.linhas) : -1;
+  const mapa = temCabecalho ? N.adivinharColunas(lido.linhas[cabecalhoEm]) : { data: 0, descricao: 1, valor: 2, entrada: -1, saida: -1 };
+  vista.importacao = { linhas: lido.linhas, mapa: mapa, temCabecalho: temCabecalho, cabecalhoEm: cabecalhoEm, candidatos: null };
 
-  $('#selo-csv').textContent = lido.linhas.length + ' linhas · separador "' + (lido.separador === '\t' ? 'tab' : lido.separador) + '"';
-  const colunas = (temCabecalho ? lido.linhas[0] : lido.linhas[0].map((_, i) => 'coluna ' + (i + 1))).map((c, i) => ({ i: i, nome: c || 'coluna ' + (i + 1) }));
+  $('#selo-csv').textContent =
+    lido.linhas.length + ' linhas · separador "' + (lido.separador === '\t' ? 'tab' : lido.separador) + '"' +
+    (cabecalhoEm > 0 ? ' · títulos na linha ' + (cabecalhoEm + 1) : '');
+  const base = lido.linhas[Math.max(0, cabecalhoEm)];
+  const colunas = (temCabecalho ? base : base.map((_, i) => 'coluna ' + (i + 1))).map((c, i) => ({ i: i, nome: c || 'coluna ' + (i + 1) }));
   const seletor = (campo, rotulo, valor) =>
     '<label class="cresce"><span class="rotulo">' + rotulo + '</span><select data-mapa="' + campo + '">' +
     '<option value="-1">— não tem —</option>' +
@@ -1037,7 +1049,7 @@ function processarExtrato() {
   if (!imp) return;
   $$('#mapa-colunas select').forEach((s) => (imp.mapa[s.dataset.mapa] = +s.value));
 
-  const mapeado = N.mapearLinhas(imp.linhas, imp.mapa, { temCabecalho: imp.temCabecalho });
+  const mapeado = N.mapearLinhas(imp.linhas, imp.mapa, { temCabecalho: imp.temCabecalho, cabecalhoEm: imp.cabecalhoEm });
   const classificado = N.classificarLote(mapeado.candidatos, estado.regras);
   const separado = N.separarNovos(classificado, estado.lancamentos);
   const destino = $('#imp-carteira').value;
@@ -1106,16 +1118,18 @@ function pintarAjustes() {
   }
   $('#p-usar-entrada').checked = p.usarEntradaDiaria !== false;
 
-  const soma = N.somarCarteiras(estado.carteiras);
+  const soma = N.somarCarteiras(estado.carteiras, estado.lancamentos);
   $('#selo-carteiras').textContent = estado.carteiras.length + ' carteiras · ' + dinheiro(soma.total);
 
   $('#tabela-carteiras').innerHTML = estado.carteiras.length
-    ? '<table><thead><tr><th>Nome</th><th class="dir">Disponível</th><th class="dir">A liberar</th><th class="meio">Dias p/ liberar</th><th class="meio">Reserva</th><th></th></tr></thead><tbody>' +
+    ? '<table><thead><tr><th>Nome</th><th class="dir">Saldo conferido</th><th class="dir">Hoje</th><th class="dir">A liberar</th><th class="meio">Dias p/ liberar</th><th class="meio">Reserva</th><th></th></tr></thead><tbody>' +
       estado.carteiras
         .map(
           (c) =>
             '<tr><td><input type="text" value="' + esc(c.nome) + '" data-cart="nome" data-id="' + esc(c.id) + '"></td>' +
-            '<td class="dir"><input class="direita" type="text" inputmode="decimal" value="' + porCentavos(c.disponivel) + '" data-cart="disponivel" data-id="' + esc(c.id) + '" placeholder="0,00"></td>' +
+            '<td class="dir"><input class="direita" type="text" inputmode="decimal" value="' + porCentavos(c.disponivel) + '" data-cart="disponivel" data-id="' + esc(c.id) + '" placeholder="0,00">' +
+            '<div class="ajuda" style="text-align:right;margin:2px 0 0">' + (c.conferidoEm ? 'em ' + esc(N.formatarData(c.conferidoEm)) : 'sem data') + '</div></td>' +
+            '<td class="dir"><b>' + esc(dinheiro(N.saldoDaCarteira(c, estado.lancamentos))) + '</b></td>' +
             '<td class="dir"><input class="direita" type="text" inputmode="decimal" value="' + porCentavos(c.aLiberar) + '" data-cart="aLiberar" data-id="' + esc(c.id) + '" placeholder="0,00"></td>' +
             '<td class="meio"><input class="direita" type="number" min="0" max="120" value="' + (c.diasLiberacao || 0) + '" data-cart="diasLiberacao" data-id="' + esc(c.id) + '"></td>' +
             '<td class="meio"><input type="checkbox" data-cart="reserva" data-id="' + esc(c.id) + '"' + (c.reserva ? ' checked' : '') + '></td>' +
@@ -1307,7 +1321,7 @@ function ligarEventos() {
       Object.assign(l, dados);
       toast('Lançamento atualizado.');
     } else {
-      estado.lancamentos.push(Object.assign({ id: novoId() }, dados));
+      estado.lancamentos.push(Object.assign({ id: novoId(), criadoEm: new Date().toISOString() }, dados));
       toast('Lançamento salvo.');
     }
     limparFormLancamento();
@@ -1386,15 +1400,25 @@ function ligarEventos() {
   });
 
   $('#btn-virar-mes').addEventListener('click', () => {
-    const r = orcamentoAtual().resultado;
-    if (!confirm('Virar o mês: o que sobrou em cada envelope passa a ficar acumulado. Confirma?')) return;
+    // fecha o mes ANTERIOR, que e o que ja terminou — fechar o mes corrente
+    // acumularia envelopes que ainda nem foram usados
+    const mes = N.mesDe(N.somarMeses(N.hojeIso(), -1));
+    if (estado.orcamento.viradoAte && estado.orcamento.viradoAte >= mes) {
+      toast(N.formatarMes(mes) + ' já foi fechado. Fechar de novo somaria a sobra duas vezes.', true);
+      return;
+    }
+    const calc = baseDoMes(mes);
+    const base = estado.orcamento.modo === 'manual' ? estado.orcamento.base || 0 : calc.base;
+    const r = N.calcularOrcamento({ base: base, envelopes: estado.orcamento.envelopes }, gastoPorEnvelope(mes));
+    if (!confirm('Fechar ' + N.formatarMes(mes) + ': o que sobrou em cada envelope naquele mês passa a ficar acumulado. Confirma?')) return;
     r.envelopes.forEach((e) => {
       const alvo = estado.orcamento.envelopes.find((x) => x.id === e.id);
       if (alvo) alvo.acumulado = Math.max(0, e.disponivel);
     });
+    estado.orcamento.viradoAte = mes;
     salvar();
     pintarOrcamento();
-    toast('Mês virado: sobras acumuladas.');
+    toast(N.formatarMes(mes) + ' fechado: sobras acumuladas.');
   });
 
   /* ---------- investir ---------- */
@@ -1461,6 +1485,17 @@ function ligarEventos() {
     if (!arq) return;
     const leitor = new FileReader();
     leitor.onload = () => {
+      // extrato de banco brasileiro ainda sai muito em Windows-1252; o caractere
+      // de substituicao denuncia que o UTF-8 nao era a leitura certa
+      if (String(leitor.result).indexOf('�') >= 0) {
+        const outro = new FileReader();
+        outro.onload = () => {
+          $('#imp-texto').value = outro.result;
+          toast('Arquivo carregado (acentos lidos como Windows-1252). Clique em “Ler extrato”.');
+        };
+        outro.readAsText(arq, 'windows-1252');
+        return;
+      }
       $('#imp-texto').value = leitor.result;
       toast('Arquivo carregado. Agora clique em “Ler extrato”.');
     };
@@ -1533,6 +1568,8 @@ function ligarEventos() {
       id: novoId(),
       nome: $('#c-nome').value.trim(),
       disponivel: N.paraCentavos($('#c-disponivel').value) || 0,
+      conferidoEm: N.hojeIso(),
+      conferidoEmTs: new Date().toISOString(),
       aLiberar: N.paraCentavos($('#c-liberar').value) || 0,
       diasLiberacao: Math.max(0, +$('#c-dias').value || 0),
       reserva: $('#c-reserva').checked,
@@ -1757,12 +1794,17 @@ function ligarEventos() {
       if (campo === 'nome') c.nome = alvo.value.trim();
       else if (campo === 'reserva') c.reserva = alvo.checked;
       else if (campo === 'diasLiberacao') c.diasLiberacao = Math.max(0, +alvo.value || 0);
-      else c[campo] = N.paraCentavos(alvo.value) || 0;
+      else {
+        c[campo] = N.paraCentavos(alvo.value) || 0;
+        // saldo digitado e sempre "conferido hoje": dali para frente ele anda
+        // sozinho com os lancamentos
+        if (campo === 'disponivel') {
+          c.conferidoEm = N.hojeIso();
+          c.conferidoEmTs = new Date().toISOString();
+        }
+      }
       salvar();
-      pintarPainel();
-      pintarInvestir();
-      pintarOrcamento();
-      $('#selo-carteiras').textContent = estado.carteiras.length + ' carteiras · ' + dinheiro(N.somarCarteiras(estado.carteiras).total);
+      pintar();
       return;
     }
 

@@ -53,11 +53,13 @@ function dadosExemplo(hoje) {
     { id: 'software', descricao: 'Softwares e assinaturas', valor: 21000, dia: 8, tipo: 'saida', categoria: 'software', carteira: 'mp', ativo: true },
   ];
 
+  // conferidoEm = hoje: os lancamentos de exemplo sao todos anteriores, entao
+  // eles ja estao dentro desses saldos (nao contam duas vezes)
   const carteiras = [
-    { id: 'inter', nome: 'Banco (conta corrente)', disponivel: 60000, aLiberar: 0, diasLiberacao: 0, reserva: false, ordem: 1 },
-    { id: 'reserva', nome: 'Reserva (CDB / caixinha)', disponivel: 250000, aLiberar: 0, diasLiberacao: 1, reserva: true, ordem: 2 },
-    { id: 'mp', nome: 'Carteira marketplace A', disponivel: 610000, aLiberar: 1200000, diasLiberacao: 14, reserva: false, ordem: 3 },
-    { id: 'shopee', nome: 'Carteira marketplace B', disponivel: 75000, aLiberar: 256000, diasLiberacao: 20, reserva: false, ordem: 4 },
+    { id: 'inter', nome: 'Banco (conta corrente)', disponivel: 60000, aLiberar: 0, diasLiberacao: 0, reserva: false, conferidoEm: h, conferidoEmTs: new Date(h + 'T00:00:00').toISOString(), ordem: 1 },
+    { id: 'reserva', nome: 'Reserva (CDB / caixinha)', disponivel: 250000, aLiberar: 0, diasLiberacao: 1, reserva: true, conferidoEm: h, conferidoEmTs: new Date(h + 'T00:00:00').toISOString(), ordem: 2 },
+    { id: 'mp', nome: 'Carteira marketplace A', disponivel: 610000, aLiberar: 1200000, diasLiberacao: 14, reserva: false, conferidoEm: h, conferidoEmTs: new Date(h + 'T00:00:00').toISOString(), ordem: 3 },
+    { id: 'shopee', nome: 'Carteira marketplace B', disponivel: 75000, aLiberar: 256000, diasLiberacao: 20, reserva: false, conferidoEm: h, conferidoEmTs: new Date(h + 'T00:00:00').toISOString(), ordem: 4 },
   ];
 
   return { lancamentos: lancamentos, recorrentes: recorrentes, carteiras: carteiras };

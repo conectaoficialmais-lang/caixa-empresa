@@ -194,12 +194,56 @@ function lerData(txt) {
 /* ====================================================== CARTEIRAS ======= */
 
 /**
+ * Saldo de uma carteira HOJE.
+ *
+ * O que o usuario digita em Ajustes e um saldo CONFERIDO numa data
+ * (`conferidoEm`): "no dia X o banco dizia tanto". Dali para frente o saldo
+ * anda sozinho com os lancamentos realizados — senao ele lanca um pagamento de
+ * R$ 9.000 e o painel continua mostrando o mesmo disponivel.
+ *
+ * Lancamento com data ANTERIOR a conferencia e ignorado: ele ja esta dentro do
+ * saldo que o banco mostrou. E por isso que importar um extrato antigo nao conta
+ * duas vezes.
+ *
+ * No PROPRIO dia da conferencia vale o relogio: o que foi registrado depois de
+ * conferir conta (ele pagou o fornecedor agora de tarde), o que ja estava ali
+ * antes nao conta (o banco ja mostrava). Sem hora registrada, nao conta.
+ *
+ * Carteira sem `conferidoEm` fica como esta (saldo manual puro).
+ */
+function saldoDaCarteira(carteira, lancamentos) {
+  const c = carteira || {};
+  let saldo = c.disponivel || 0;
+  if (!c.conferidoEm) return saldo;
+
+  (lancamentos || []).forEach((l) => {
+    if (l.status !== 'realizado' || l.data < c.conferidoEm) return;
+    if (l.data === c.conferidoEm) {
+      // sem hora da conferencia, vale ter sido digitado: linha de extrato
+      // importada nao tem `criadoEm` e continua de fora
+      const depois = l.criadoEm && (!c.conferidoEmTs || l.criadoEm > c.conferidoEmTs);
+      if (!depois) return;
+    }
+    if (l.tipo === 'transferencia') {
+      if (l.carteira === c.id) saldo -= l.valor || 0;
+      if (l.carteiraDestino === c.id) saldo += l.valor || 0;
+      return;
+    }
+    if (l.carteira !== c.id) return;
+    saldo += l.tipo === 'entrada' ? l.valor || 0 : -(l.valor || 0);
+  });
+  return saldo;
+}
+
+/**
  * Soma das carteiras. "disponivel" e o que da para gastar hoje; "aLiberar" e
  * venda feita que o marketplace ainda nao soltou.
  * CAIXA DA EMPRESA = os dois somados, nunca so o saldo do banco.
+ *
+ * Passando os lancamentos, cada saldo e o derivado de saldoDaCarteira().
  */
-function somarCarteiras(carteiras) {
-  const lista = carteiras || [];
+function somarCarteiras(carteiras, lancamentos) {
+  const lista = (carteiras || []).map((c) => Object.assign({}, c, { disponivel: saldoDaCarteira(c, lancamentos) }));
   const disponivel = lista.reduce((s, c) => s + (c.disponivel || 0), 0);
   const aLiberar = lista.reduce((s, c) => s + (c.aLiberar || 0), 0);
   const reserva = lista.filter((c) => c.reserva).reduce((s, c) => s + (c.disponivel || 0), 0);
@@ -274,7 +318,7 @@ function projetar(opcoes) {
   const fatorVendas = Math.max(0, 1 + (cenario.vendas || 0));
   const atraso = Math.max(0, cenario.atrasoLiberacao || 0);
 
-  const soma = somarCarteiras(carteiras);
+  const soma = somarCarteiras(carteiras, o.lancamentos);
 
   const porDia = {};
   const empurra = (data, valor) => {
@@ -307,10 +351,13 @@ function projetar(opcoes) {
     for (let i = maiorPrazo + 1; i <= horizonte - 1; i++) empurra(somarDias(hoje, i), entradaDiaria);
   }
 
-  // contas fixas + lancamentos previstos
+  // contas fixas + lancamentos previstos.
+  // Conta vencida e nao paga nao some: ela e empurrada para hoje, senao o app
+  // mostra folga que nao existe justamente quando ele esta atrasado.
+  const previstos = (o.lancamentos || []).filter((l) => l.status !== 'realizado' && l.data <= fim);
   const eventos = []
     .concat(expandirRecorrentes(o.recorrentes, somarDias(hoje, 1), fim))
-    .concat((o.lancamentos || []).filter((l) => l.data > hoje && l.data <= fim && l.status !== 'realizado'));
+    .concat(previstos.map((l) => (l.data < hoje ? Object.assign({}, l, { data: hoje, vencido: true }) : l)));
 
   eventos.forEach((l) => {
     if (l.tipo === 'transferencia') return;
@@ -319,14 +366,23 @@ function projetar(opcoes) {
     empurra(l.data, l.tipo === 'entrada' ? ajustado : -ajustado);
   });
 
-  // recompra de estoque planejada (o furo conhecido de toda projecao de caixa)
+  // Recompra de estoque planejada (o furo conhecido de toda projecao de caixa).
+  // Desconta o que ja esta lancado como compra de estoque naquele mes, senao a
+  // mesma compra entra duas vezes: uma pela premissa, outra pelo pedido marcado.
   const recompra = premissas.recompraMensal || 0;
   if (recompra > 0) {
+    const catEstoque = premissas.categoriaRecompra || 'estoque';
     const dia = Math.min(28, Math.max(1, premissas.diaRecompra || 10));
     let mes = mesDe(hoje);
     for (let i = 0; i < 14; i++) {
       const data = diaDoMes(mes, dia);
-      if (data > hoje && data <= fim) empurra(data, -recompra);
+      if (data > hoje && data <= fim) {
+        const jaLancado = (o.lancamentos || [])
+          .filter((l) => l.tipo === 'saida' && l.categoria === catEstoque && mesDe(l.data) === mes)
+          .reduce((s, l) => s + (l.valor || 0), 0);
+        const falta = Math.max(0, recompra - jaLancado);
+        if (falta > 0) empurra(data, -falta);
+      }
       mes = mesDe(somarMeses(mes + '-01', 1));
     }
   }
@@ -548,11 +604,14 @@ function poderDeCompra(opcoes) {
   };
 }
 
-/** Soma o que ja esta comprometido entre hoje e N dias (contas + fixas). */
+/**
+ * Soma o que ja esta comprometido entre hoje e N dias (contas + fixas).
+ * Conta vencida e nao paga continua sendo compromisso — ela entra aqui.
+ */
 function compromissosAte(lancamentos, recorrentes, hoje, dias) {
   const fim = somarDias(hoje, dias);
   const previstos = (lancamentos || []).filter(
-    (l) => l.tipo === 'saida' && l.status !== 'realizado' && l.data >= hoje && l.data <= fim
+    (l) => l.tipo === 'saida' && l.status !== 'realizado' && l.data <= fim
   );
   const fixas = expandirRecorrentes(recorrentes, hoje, fim).filter((l) => l.tipo === 'saida');
   return previstos.concat(fixas).reduce((s, l) => s + (l.valor || 0), 0);
@@ -622,16 +681,48 @@ function lerCsv(texto) {
 }
 
 /**
+ * Acha em que linha esta o cabecalho. Extrato de banco costuma vir com umas
+ * linhas de preambulo antes ("Extrato conta corrente", periodo, CNPJ...), e a
+ * linha 0 nem sempre e a dos titulos. Devolve 0 quando nao reconhece nenhuma.
+ */
+function acharCabecalho(linhas) {
+  const lista = linhas || [];
+  for (let i = 0; i < Math.min(lista.length, 25); i++) {
+    const texto = lista[i]
+      .join(' ')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+    const temData = /\b(data|date)\b/.test(texto);
+    const temValor = /(valor|vlr|amount|credito|debito|entrada|saida)/.test(texto);
+    if (temData && temValor) return i;
+  }
+  return 0;
+}
+
+/**
  * Adivinha pelo cabecalho qual coluna e data / descricao / valor.
  * Extrato de banco quase sempre tem esses nomes; quando nao tem, quem importa
  * escolhe na mao na tela de importacao.
  */
 function adivinharColunas(cabecalho) {
-  const nomes = (cabecalho || []).map((c) => String(c || '').toLowerCase());
-  const achar = (termos) => nomes.findIndex((n) => termos.some((t) => n.includes(t)));
+  const nomes = (cabecalho || []).map((c) =>
+    String(c || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+  );
+  const achar = (termos, menos) =>
+    nomes.findIndex((n, i) => i !== menos && termos.some((t) => n.includes(t)));
+  const data = achar(['data', 'date', 'dt_', 'dia']);
   return {
-    data: achar(['data', 'date', 'dt_', 'dia']),
-    descricao: achar(['descri', 'hist', 'lanc', 'lanç', 'detalhe', 'memo', 'titulo', 'identifica']),
+    data: data,
+    // "Data Lancamento" tambem casa com "lanc": por isso a coluna da data fica
+    // de fora da busca pela descricao.
+    descricao: (() => {
+      const forte = achar(['descri', 'hist', 'detalhe', 'memo', 'identifica'], data);
+      return forte >= 0 ? forte : achar(['lanc', 'titulo', 'transacao'], data);
+    })(),
     valor: achar(['valor', 'value', 'amount', 'montante', 'vlr']),
     saldo: achar(['saldo', 'balance']),
     entrada: achar(['credito', 'crédito', 'entrada']),
@@ -648,12 +739,13 @@ function mapearLinhas(linhas, mapa, opcoes) {
   const o = opcoes || {};
   const m = mapa || {};
   const temCabecalho = o.temCabecalho !== false;
-  const corpo = temCabecalho ? (linhas || []).slice(1) : linhas || [];
+  const cabecalhoEm = temCabecalho ? o.cabecalhoEm || 0 : -1;
+  const corpo = (linhas || []).slice(cabecalhoEm + 1);
   const candidatos = [];
   const recusados = [];
 
   corpo.forEach((linha, i) => {
-    const numeroLinha = i + (temCabecalho ? 2 : 1);
+    const numeroLinha = i + cabecalhoEm + 2;
     const data = lerData(linha[m.data]);
     let centavos = null;
 
@@ -774,7 +866,9 @@ const Nucleo = {
   diaDoMes: diaDoMes,
   lerData: lerData,
   MESES_BR: MESES_BR,
+  saldoDaCarteira: saldoDaCarteira,
   somarCarteiras: somarCarteiras,
+  acharCabecalho: acharCabecalho,
   expandirRecorrentes: expandirRecorrentes,
   projetar: projetar,
   simularPagamento: simularPagamento,
