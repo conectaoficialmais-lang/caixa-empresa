@@ -1,0 +1,15 @@
+# DADOS FINANCEIROS — nunca entram no repositorio (ele e publico)
+caixa-empresa-backup-*.json
+lancamentos-*.csv
+*.backup.json
+extrato*.csv
+extrato*.ofx
+/dados-reais/
+
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+.claude/

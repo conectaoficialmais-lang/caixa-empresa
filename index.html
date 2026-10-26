@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caixa da Empresa</title>
+<meta name="description" content="Controle de caixa da empresa: entradas, saídas, contas a pagar, projeção de saldo futuro, orçamento por envelopes, reserva de emergência e o momento certo de investir em produto novo.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo-faixa">
+    <div class="marca">
+      <span class="marca-icone" aria-hidden="true">₿</span>
+      <div>
+        <h1>Caixa da Empresa</h1>
+        <p class="marca-sub">Entra, sai, sobra — e quando dá para investir</p>
+      </div>
+    </div>
+    <div class="topo-acoes">
+      <span id="selo-salvo" class="selo so-desktop">—</span>
+      <button id="btn-tema" class="btn btn-fantasma btn-mini" type="button" title="Alternar tema">◐<span class="so-desktop">Tema</span></button>
+    </div>
+  </div>
+
+  <nav class="abas" role="tablist">
+    <button class="aba ativa" role="tab" data-aba="painel">Painel</button>
+    <button class="aba" role="tab" data-aba="lancamentos">Lançamentos</button>
+    <button class="aba" role="tab" data-aba="agenda">Agenda</button>
+    <button class="aba" role="tab" data-aba="orcamento">Orçamento</button>
+    <button class="aba" role="tab" data-aba="investir">Investir</button>
+    <button class="aba" role="tab" data-aba="relatorios">Relatórios</button>
+    <button class="aba" role="tab" data-aba="importar">Importar</button>
+    <button class="aba" role="tab" data-aba="ajustes">Ajustes</button>
+    <button class="aba" role="tab" data-aba="ajuda">Como usar</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ================================================================ PAINEL -->
+<section id="painel-painel" class="painel ativo" role="tabpanel">
+
+  <div id="alertas"></div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca">
+      <h2>Projeção de saldo, dia a dia</h2>
+      <div class="pilulas" id="pilulas-horizonte">
+        <button class="pilula" data-horizonte="30">30 dias</button>
+        <button class="pilula ativa" data-horizonte="90">90 dias</button>
+        <button class="pilula" data-horizonte="180">180 dias</button>
+      </div>
+    </div>
+    <div id="grafico-projecao"></div>
+    <div class="legenda">
+      <span><i style="background:var(--verde)"></i>saldo disponível projetado</span>
+      <span><i style="background:var(--amarelo)"></i>piso (reserva + colchão)</span>
+      <span><i style="background:var(--vermelho)"></i>menor saldo do período</span>
+    </div>
+    <p class="ajuda" id="nota-projecao"></p>
+  </div>
+
+  <div class="grade grade-2">
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Cenários: e se piorar?</h3></div>
+      <p class="explica">Mexa nos dois controles e veja a curva reagir. É assim que se descobre se o caixa aguenta um tombo <b>antes</b> dele acontecer.</p>
+      <label>
+        <span class="rotulo">Vendas caem <b id="rot-vendas" class="num">0%</b></span>
+        <input id="cen-vendas" type="range" min="-60" max="30" step="5" value="0">
+      </label>
+      <label style="margin-top:12px">
+        <span class="rotulo">Repasse atrasa <b id="rot-atraso" class="num">0 dias</b></span>
+        <input id="cen-atraso" type="range" min="0" max="30" step="1" value="0">
+      </label>
+      <div id="resumo-cenario" style="margin-top:12px"></div>
+      <button id="btn-zera-cenario" class="btn btn-fantasma btn-mini" type="button" style="margin-top:10px">Voltar ao normal</button>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Consigo pagar?</h3></div>
+      <p class="explica">Põe o valor e a data que o fornecedor pede. O app refaz a curva com esse pagamento dentro e diz qual fica o <b>menor saldo</b> do período — e, se não couber, a primeira data em que cabe.</p>
+      <div class="linha">
+        <label class="cresce"><span class="rotulo">Valor</span><input id="sim-valor" class="direita" type="text" inputmode="decimal" placeholder="9.500,00"></label>
+        <label class="cresce"><span class="rotulo">Data do pagamento</span><input id="sim-data" type="date"></label>
+      </div>
+      <button id="btn-simular" class="btn" type="button" style="margin-top:10px">Simular</button>
+      <div id="resultado-simulacao" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="grade grade-2">
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>O mês até agora</h3><span class="selo" id="selo-mes">—</span></div>
+      <div id="resumo-mes"></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Onde está o dinheiro</h3></div>
+      <div id="tabela-carteiras-resumo"></div>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Próximos 30 dias</h3><span class="selo" id="selo-proximos">—</span></div>
+    <div id="tabela-proximos"></div>
+  </div>
+</section>
+
+<!-- =========================================================== LANCAMENTOS -->
+<section id="painel-lancamentos" class="painel" role="tabpanel">
+
+  <p class="explica">
+    Aqui entra <b>todo</b> dinheiro que andou. Três tipos, e a diferença é o coração do app:<br>
+    <b>Entrada</b> = dinheiro que chegou de fora (venda, repasse, aporte seu).<br>
+    <b>Saída</b> = dinheiro que saiu para fora (fornecedor, imposto, anúncio, pró-labore).<br>
+    <b>Transferência</b> = dinheiro que só <b>mudou de bolso</b> — marketplace → banco, banco → caixinha.
+    Transferência <b>não</b> é entrada nem saída: se você lançar como entrada, o app passa a achar que você
+    fatura o dobro do que fatura.
+  </p>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2 id="titulo-form-lanc">Novo lançamento</h2><span class="selo" id="selo-editando" hidden>editando</span></div>
+    <form id="form-lanc" autocomplete="off">
+      <div class="linha">
+        <label style="flex:0 0 150px"><span class="rotulo">Tipo</span>
+          <select id="l-tipo">
+            <option value="entrada">Entrada</option>
+            <option value="saida" selected>Saída</option>
+            <option value="transferencia">Transferência</option>
+          </select>
+        </label>
+        <label style="flex:0 0 150px"><span class="rotulo">Data</span><input id="l-data" type="date" required></label>
+        <label class="cresce" style="flex:2 1 240px"><span class="rotulo">Descrição</span><input id="l-descricao" type="text" placeholder="Fornecedor A — reposição de cabos" required></label>
+        <label style="flex:0 0 140px"><span class="rotulo">Valor</span><input id="l-valor" class="direita" type="text" inputmode="decimal" placeholder="1.250,00" required></label>
+      </div>
+      <div class="linha" style="margin-top:10px">
+        <label class="cresce"><span class="rotulo">Categoria</span><select id="l-categoria"></select></label>
+        <label class="cresce"><span class="rotulo" id="rot-carteira">Carteira</span><select id="l-carteira"></select></label>
+        <label class="cresce" id="campo-destino" hidden><span class="rotulo">Para qual carteira</span><select id="l-destino"></select></label>
+        <label style="flex:0 0 150px"><span class="rotulo">Situação</span>
+          <select id="l-status">
+            <option value="realizado" selected>Já aconteceu</option>
+            <option value="previsto">Ainda vai acontecer</option>
+          </select>
+        </label>
+      </div>
+      <div class="linha" style="margin-top:12px">
+        <label class="caixa-check"><input id="l-pessoal" type="checkbox"> Gasto pessoal pago pela empresa</label>
+        <label class="caixa-check"><input id="l-estimado" type="checkbox"> Valor é só uma estimativa</label>
+        <div style="margin-left:auto; display:flex; gap:8px">
+          <button id="btn-cancelar-lanc" class="btn btn-fantasma" type="button" hidden>Cancelar</button>
+          <button class="btn" type="submit">Salvar lançamento</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca">
+      <h3>Extrato</h3>
+      <span class="selo" id="selo-lanc-total">—</span>
+    </div>
+    <div class="linha" style="margin-bottom:10px">
+      <label style="flex:0 0 160px"><span class="rotulo">Mês</span><select id="f-mes"></select></label>
+      <label style="flex:0 0 150px"><span class="rotulo">Tipo</span>
+        <select id="f-tipo">
+          <option value="">Todos</option>
+          <option value="entrada">Entradas</option>
+          <option value="saida">Saídas</option>
+          <option value="transferencia">Transferências</option>
+        </select>
+      </label>
+      <label style="flex:0 0 170px"><span class="rotulo">Categoria</span><select id="f-categoria"></select></label>
+      <label style="flex:0 0 170px"><span class="rotulo">Carteira</span><select id="f-carteira"></select></label>
+      <label class="cresce"><span class="rotulo">Buscar na descrição</span><input id="f-busca" type="search" placeholder="fornecedor, pix, delivery…"></label>
+    </div>
+    <div id="tabela-lancamentos" class="rolagem"></div>
+  </div>
+</section>
+
+<!-- ================================================================ AGENDA -->
+<section id="painel-agenda" class="painel" role="tabpanel">
+
+  <p class="explica">
+    A agenda é o que ainda <b>vai</b> acontecer. Duas coisas diferentes: as <b>contas fixas</b>, que repetem
+    todo mês no mesmo dia (pró-labore, imposto, contador), e os <b>compromissos pontuais</b>, que são um
+    pagamento ou recebimento marcado numa data só. As duas entram na projeção do painel.
+  </p>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Contas fixas do mês</h2><span class="selo" id="selo-fixas">—</span></div>
+    <form id="form-rec" autocomplete="off">
+      <div class="linha">
+        <label class="cresce" style="flex:2 1 220px"><span class="rotulo">Descrição</span><input id="r-descricao" type="text" placeholder="Pró-labore" required></label>
+        <label style="flex:0 0 130px"><span class="rotulo">Valor</span><input id="r-valor" class="direita" type="text" inputmode="decimal" placeholder="4.000,00" required></label>
+        <label style="flex:0 0 100px"><span class="rotulo">Dia</span><input id="r-dia" type="number" min="1" max="31" value="5" required></label>
+        <label style="flex:0 0 130px"><span class="rotulo">Tipo</span>
+          <select id="r-tipo"><option value="saida" selected>Saída</option><option value="entrada">Entrada</option></select>
+        </label>
+        <label class="cresce"><span class="rotulo">Categoria</span><select id="r-categoria"></select></label>
+        <label class="cresce"><span class="rotulo">Carteira</span><select id="r-carteira"></select></label>
+        <button class="btn" type="submit">Adicionar</button>
+      </div>
+    </form>
+    <div id="tabela-recorrentes" class="rolagem" style="margin-top:12px"></div>
+    <p class="ajuda">Dia 29, 30 ou 31 em mês curto cai no último dia do mês — nunca escorrega para o mês seguinte.</p>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Compromissos marcados</h3><span class="selo" id="selo-compromissos">—</span></div>
+    <p class="ajuda">Lançamentos com situação <b>“ainda vai acontecer”</b>. Quando o dinheiro andar de verdade, clique em <b>✓</b> para marcar como realizado — aí ele sai da projeção e entra no fechamento do mês.</p>
+    <div id="tabela-agenda" class="rolagem"></div>
+  </div>
+</section>
+
+<!-- ============================================================= ORCAMENTO -->
+<section id="painel-orcamento" class="painel" role="tabpanel">
+
+  <p class="explica">
+    Orçamento por <b>envelopes</b>: a sobra do mês é dividida em percentuais, e cada envelope só pode gastar
+    o que tem dentro. É o que impede o erro mais caro de uma operação de marketplace — gastar em estoque
+    todo dinheiro que entrou, e depois descobrir que não sobrou nada para o imposto nem para a reserva.
+  </p>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>A base do mês</h2><span class="selo" id="selo-base">—</span></div>
+    <div class="linha">
+      <label style="flex:0 0 200px"><span class="rotulo">Como calcular a base</span>
+        <select id="o-modo">
+          <option value="auto" selected>Automático (entradas − contas obrigatórias)</option>
+          <option value="manual">Eu digito o valor</option>
+        </select>
+      </label>
+      <label style="flex:0 0 170px" id="campo-base-manual" hidden><span class="rotulo">Base do mês</span><input id="o-base" class="direita" type="text" inputmode="decimal" placeholder="8.000,00"></label>
+      <div class="cresce" id="explica-base"></div>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Envelopes</h3><span class="selo" id="selo-pct">—</span></div>
+    <div id="lista-envelopes" class="grade grade-3"></div>
+    <div class="linha" style="margin-top:14px">
+      <button id="btn-add-envelope" class="btn btn-fantasma btn-mini" type="button">+ Novo envelope</button>
+      <button id="btn-virar-mes" class="btn btn-fantasma btn-mini" type="button">Virar o mês (o que sobrou fica acumulado)</button>
+    </div>
+    <p class="ajuda">O <b>acumulado</b> é o que sobrou de meses anteriores e continua disponível naquele envelope — é assim que se junta dinheiro para uma compra grande sem estourar o mês.</p>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Reserva de emergência</h2><span class="selo" id="selo-reserva">—</span></div>
+    <p class="explica">A reserva não é lucro guardado: é o que mantém a empresa de pé num mês ruim — repasse atrasou, venda caiu, devolução em massa. A meta é medida em <b>meses de custo fixo</b>, não em reais soltos.</p>
+    <div class="linha">
+      <label style="flex:0 0 190px"><span class="rotulo">Meta (meses de custo fixo)</span><input id="res-meses" type="number" min="0" max="24" step="0.5" value="3"></label>
+      <div class="cresce" id="painel-reserva"></div>
+    </div>
+    <p class="ajuda">O saldo da reserva é a soma das carteiras marcadas como <b>reserva</b> em Ajustes.</p>
+  </div>
+</section>
+
+<!-- =============================================================== INVESTIR -->
+<section id="painel-investir" class="painel" role="tabpanel">
+
+  <p class="explica">
+    Esta aba responde a pergunta mais caradura do negócio: <b>posso comprar agora, e quanto?</b>
+    Dinheiro no banco não é dinheiro livre — tem imposto chegando, pró-labore, fornecedor já pedido
+    e a reserva, que não se toca.
+  </p>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Poder de compra livre, hoje</h2></div>
+    <div id="poder-compra"></div>
+  </div>
+
+  <div class="grade grade-2">
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Quando dá para comprar?</h3></div>
+      <p class="ajuda">Põe o valor da compra. O app procura, dia a dia, a <b>primeira data</b> em que esse pagamento cabe sem furar o piso de segurança.</p>
+      <div class="linha">
+        <label class="cresce"><span class="rotulo">Valor da compra</span><input id="inv-valor" class="direita" type="text" inputmode="decimal" placeholder="6.000,00"></label>
+        <button id="btn-quando" class="btn" type="button">Calcular</button>
+      </div>
+      <div id="resultado-quando" style="margin-top:12px"></div>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Vale a pena? (retorno da compra)</h3></div>
+      <p class="ajuda">Compra de estoque não é gasto, é dinheiro trocado de forma: sai do caixa e volta vendido. O que decide é <b>quanto tempo</b> leva para voltar.</p>
+      <div class="linha">
+        <label class="cresce"><span class="rotulo">Valor investido</span><input id="pb-investido" class="direita" type="text" inputmode="decimal" placeholder="6.000,00"></label>
+        <label class="cresce"><span class="rotulo">Unidades</span><input id="pb-unidades" class="direita" type="number" min="0" step="1" placeholder="100"></label>
+      </div>
+      <div class="linha" style="margin-top:10px">
+        <label class="cresce"><span class="rotulo">Lucro por unidade</span><input id="pb-margem" class="direita" type="text" inputmode="decimal" placeholder="6,00"></label>
+        <label class="cresce"><span class="rotulo">Unidades vendidas por dia</span><input id="pb-giro" class="direita" type="text" inputmode="decimal" placeholder="5"></label>
+      </div>
+      <button id="btn-payback" class="btn" type="button" style="margin-top:10px">Calcular retorno</button>
+      <div id="resultado-payback" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Semáforo da decisão</h3></div>
+    <div id="semaforo"></div>
+  </div>
+</section>
+
+<!-- ============================================================ RELATORIOS -->
+<section id="painel-relatorios" class="painel" role="tabpanel">
+
+  <p class="explica">
+    Tudo aqui é regime de <b>caixa</b>: conta o dia em que o dinheiro andou. Por isso
+    <b>“resultado de caixa” não é lucro</b> — a compra de estoque pesa toda no mês em que foi paga,
+    mas só vira custo de verdade quando a mercadoria vende. Para lucro, use o DRE.
+  </p>
+
+  <div class="kpis" id="kpis-rel"></div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca">
+      <h3>Entrou, saiu e sobrou por mês</h3>
+      <div class="pilulas" id="pilulas-meses">
+        <button class="pilula" data-meses="3">3 meses</button>
+        <button class="pilula ativa" data-meses="6">6 meses</button>
+        <button class="pilula" data-meses="12">12 meses</button>
+      </div>
+    </div>
+    <div id="grafico-mensal"></div>
+    <div class="legenda">
+      <span><i style="background:var(--verde)"></i>entradas</span>
+      <span><i style="background:var(--vermelho)"></i>saídas</span>
+      <span><i style="background:var(--azul)"></i>sobra de caixa</span>
+    </div>
+  </div>
+
+  <div class="grade grade-2">
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>Para onde foi o dinheiro</h3><span class="selo" id="selo-cat-mes">—</span></div>
+      <div id="tabela-categorias"></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cabeca"><h3>De onde o dinheiro veio</h3></div>
+      <div id="tabela-origens"></div>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Mistura pessoa física × empresa</h3></div>
+    <p class="explica">Gasto pessoal pago pela conta da empresa é o vazamento mais comum e o mais difícil de ver: cada um é pequeno, o total não é. Pró-labore <b>não</b> conta aqui — ele é combinado, tem dia e valor. O que conta é o que passou por fora dele.</p>
+    <div id="tabela-pessoal"></div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h3>Mês a mês, linha por linha</h3></div>
+    <div id="tabela-mensal" class="rolagem"></div>
+  </div>
+</section>
+
+<!-- ============================================================== IMPORTAR -->
+<section id="painel-importar" class="painel" role="tabpanel">
+
+  <p class="explica">
+    Em vez de digitar o extrato, cole ou carregue o <b>CSV</b> que o banco e o marketplace exportam.
+    O app adivinha as colunas, aplica as suas regras de classificação, descarta o que já está lançado
+    e só então mostra o que vai entrar — <b>nada é salvo antes de você confirmar</b>.
+  </p>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>1. Traga o extrato</h2></div>
+    <div class="linha">
+      <label style="flex:0 0 220px"><span class="rotulo">Arquivo CSV</span><input id="imp-arquivo" type="file" accept=".csv,.txt,text/csv"></label>
+      <label style="flex:0 0 180px"><span class="rotulo">Carteira de destino</span><select id="imp-carteira"></select></label>
+      <label class="caixa-check" style="flex:0 0 190px"><input id="imp-cabecalho" type="checkbox" checked> A primeira linha é título</label>
+    </div>
+    <label style="margin-top:10px"><span class="rotulo">…ou cole o conteúdo aqui</span>
+      <textarea id="imp-texto" rows="6" placeholder="Data;Descrição;Valor&#10;01/10/2026;PIX RECEBIDO;1.500,00&#10;02/10/2026;PIX ENVIADO FORNECEDOR;-9.000,00"></textarea>
+    </label>
+    <button id="btn-ler-csv" class="btn" type="button" style="margin-top:10px">Ler extrato</button>
+  </div>
+
+  <div class="cartao" id="cartao-colunas" hidden>
+    <div class="cartao-cabeca"><h2>2. Confira as colunas</h2><span class="selo" id="selo-csv">—</span></div>
+    <div class="linha" id="mapa-colunas"></div>
+    <button id="btn-processar" class="btn" type="button" style="margin-top:12px">Processar</button>
+  </div>
+
+  <div class="cartao" id="cartao-previa" hidden>
+    <div class="cartao-cabeca"><h2>3. Revise e confirme</h2><span class="selo" id="selo-previa">—</span></div>
+    <div id="avisos-previa"></div>
+    <div id="tabela-previa" class="rolagem"></div>
+    <div class="linha" style="margin-top:12px">
+      <button id="btn-confirmar-imp" class="btn" type="button">Importar os marcados</button>
+      <button id="btn-cancelar-imp" class="btn btn-fantasma" type="button">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Regras de classificação</h2><span class="selo" id="selo-regras">—</span></div>
+    <p class="explica">Cada regra olha um pedaço da descrição e decide o que é aquilo. A <b>primeira</b> regra que casar ganha, então deixe as mais específicas no topo. Acento e maiúscula não importam.</p>
+    <form id="form-regra" autocomplete="off">
+      <div class="linha">
+        <label class="cresce" style="flex:2 1 200px"><span class="rotulo">Quando a descrição contiver</span><input id="rg-contem" type="text" placeholder="pix recebido mercado" required></label>
+        <label style="flex:0 0 150px"><span class="rotulo">Vira o tipo</span>
+          <select id="rg-tipo">
+            <option value="">(mantém)</option>
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+            <option value="transferencia">Transferência</option>
+          </select>
+        </label>
+        <label class="cresce"><span class="rotulo">Categoria</span><select id="rg-categoria"></select></label>
+        <label class="caixa-check" style="flex:0 0 150px"><input id="rg-pessoal" type="checkbox"> é gasto pessoal</label>
+        <button class="btn" type="submit">Adicionar regra</button>
+      </div>
+    </form>
+    <div id="tabela-regras" class="rolagem" style="margin-top:12px"></div>
+  </div>
+</section>
+
+<!-- =============================================================== AJUSTES -->
+<section id="painel-ajustes" class="painel" role="tabpanel">
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Carteiras</h2><span class="selo" id="selo-carteiras">—</span></div>
+    <p class="explica">
+      Carteira é cada lugar onde o seu dinheiro está. <b>Disponível</b> é o que dá para gastar hoje;
+      <b>a liberar</b> é venda já feita que o marketplace ainda não soltou, e <b>dias para liberar</b> é o
+      prazo médio disso cair. O caixa da empresa é a soma de todas — nunca só o saldo do banco.
+    </p>
+    <div id="tabela-carteiras" class="rolagem"></div>
+    <form id="form-carteira" autocomplete="off" style="margin-top:12px">
+      <div class="linha">
+        <label class="cresce" style="flex:2 1 200px"><span class="rotulo">Nome</span><input id="c-nome" type="text" placeholder="Banco (conta corrente)" required></label>
+        <label style="flex:0 0 150px"><span class="rotulo">Disponível</span><input id="c-disponivel" class="direita" type="text" inputmode="decimal" placeholder="0,00"></label>
+        <label style="flex:0 0 150px"><span class="rotulo">A liberar</span><input id="c-liberar" class="direita" type="text" inputmode="decimal" placeholder="0,00"></label>
+        <label style="flex:0 0 120px"><span class="rotulo">Dias p/ liberar</span><input id="c-dias" type="number" min="0" max="120" value="0"></label>
+        <label class="caixa-check" style="flex:0 0 120px"><input id="c-reserva" type="checkbox"> é reserva</label>
+        <button class="btn" type="submit">Adicionar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Premissas da projeção</h2></div>
+    <p class="explica">
+      A projeção precisa de três chutes seus. Erre neles e a curva mente — com eles certos, ela é a
+      ferramenta mais útil do app. O terceiro é o mais esquecido: <b>toda operação recompra estoque</b>,
+      e sem lançar isso a curva sobe como se o dinheiro ficasse parado.
+    </p>
+    <div class="grade grade-3">
+      <label><span class="rotulo">Entrada de venda nova por dia</span><input id="p-entrada" class="direita" type="text" inputmode="decimal" placeholder="800,00">
+        <span class="ajuda">Média do que cai por dia de venda nova, depois do prazo de liberação.</span></label>
+      <label><span class="rotulo">Recompra de estoque por mês</span><input id="p-recompra" class="direita" type="text" inputmode="decimal" placeholder="13.000,00">
+        <span class="ajuda">Quanto você devolve ao fornecedor todo mês para repor o que vendeu.</span></label>
+      <label><span class="rotulo">Dia da recompra</span><input id="p-dia-recompra" type="number" min="1" max="28" value="10">
+        <span class="ajuda">Dia do mês em que o fornecedor costuma ser pago.</span></label>
+      <label><span class="rotulo">Colchão de segurança</span><input id="p-colchao" class="direita" type="text" inputmode="decimal" placeholder="1.000,00">
+        <span class="ajuda">Piso que você não quer furar nem em dia ruim. Entra junto com a reserva.</span></label>
+      <label><span class="rotulo">Custo fixo mensal</span><input id="p-custofixo" class="direita" type="text" inputmode="decimal" placeholder="0,00">
+        <span class="ajuda">Em branco, o app soma as contas fixas da agenda.</span></label>
+      <label class="caixa-check" style="align-self:end"><input id="p-usar-entrada" type="checkbox" checked> Considerar venda nova na projeção</label>
+    </div>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Categorias</h2><span class="selo" id="selo-categorias">—</span></div>
+    <p class="explica">
+      Cada categoria de saída aponta para um <b>envelope</b> do orçamento, ou é marcada como
+      <b>obrigatória</b>. Obrigatória é conta que não se escolhe pagar — imposto, pró-labore, contador:
+      ela sai da base antes da divisão, não de dentro de um envelope.
+    </p>
+    <div id="tabela-categorias-cfg" class="rolagem"></div>
+    <form id="form-categoria" autocomplete="off" style="margin-top:12px">
+      <div class="linha">
+        <label class="cresce"><span class="rotulo">Nome</span><input id="cat-nome" type="text" placeholder="Frete extra" required></label>
+        <label style="flex:0 0 130px"><span class="rotulo">Tipo</span>
+          <select id="cat-tipo"><option value="saida" selected>Saída</option><option value="entrada">Entrada</option></select>
+        </label>
+        <label class="cresce"><span class="rotulo">Envelope</span><select id="cat-envelope"></select></label>
+        <label class="caixa-check" style="flex:0 0 140px"><input id="cat-obrigatoria" type="checkbox"> obrigatória</label>
+        <button class="btn" type="submit">Adicionar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Backup dos seus dados</h2><span class="selo" id="selo-backup">—</span></div>
+    <div class="aviso atencao">
+      <span class="aviso-icone">⚠</span>
+      <div>
+        Os dados ficam <b>só neste navegador</b> (localStorage). Nada é enviado para servidor nenhum —
+        e por isso nada se recupera sozinho. Limpar os dados do navegador, trocar de computador ou abrir
+        numa janela anônima e <b>os lançamentos somem</b>. Baixe o backup com frequência.
+      </div>
+    </div>
+    <div class="linha">
+      <button id="btn-exportar" class="btn" type="button">⬇ Baixar backup (.json)</button>
+      <label style="flex:0 0 240px"><span class="rotulo">Restaurar de um backup</span><input id="arq-importar" type="file" accept=".json,application/json"></label>
+      <button id="btn-exportar-csv" class="btn btn-fantasma" type="button">⬇ Lançamentos em CSV</button>
+    </div>
+    <div class="linha" style="margin-top:16px; border-top:1px solid var(--borda); padding-top:14px">
+      <button id="btn-exemplos" class="btn btn-fantasma" type="button">Carregar dados de exemplo</button>
+      <button id="btn-apagar-exemplos" class="btn btn-fantasma" type="button">Apagar só os exemplos</button>
+      <button id="btn-zerar" class="btn btn-perigo" type="button" style="margin-left:auto">Apagar tudo e começar do zero</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================== AJUDA -->
+<section id="painel-ajuda" class="painel" role="tabpanel">
+
+  <div class="cartao">
+    <div class="cartao-cabeca"><h2>Como usar, em 5 minutos</h2></div>
+
+    <details class="dobra" open>
+      <summary>Primeira vez: 4 passos e o app já serve</summary>
+      <div>
+        <p><b>1. Ajustes → Carteiras.</b> Põe cada lugar onde seu dinheiro está: conta do banco, a reserva,
+        e cada marketplace com o que está <i>disponível</i> e o que está <i>a liberar</i>.</p>
+        <p><b>2. Agenda → Contas fixas.</b> Lança pró-labore, imposto, contador, software, anúncios. É o que
+        a empresa paga todo mês sem perguntar.</p>
+        <p><b>3. Ajustes → Premissas.</b> Três números: quanto de venda nova cai por dia, quanto você
+        recompra de estoque por mês e em que dia. Esses três mandam na projeção.</p>
+        <p><b>4. Importar.</b> Cola o CSV do banco. Daí para frente é rotina: importar, conferir, decidir.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Entrada, saída e transferência — a confusão que estraga tudo</summary>
+      <div>
+        <p>Dinheiro que vai do marketplace para o banco <b>não é entrada</b>. Ele já era seu; só mudou de
+        bolso. Se lançar como entrada, o app passa a mostrar o dobro do faturamento, o orçamento ganha uma
+        base que não existe e você aprova compras com dinheiro imaginário.</p>
+        <p>Vale para tudo que é seu: banco ↔ caixinha, carteira do marketplace → banco, varredura automática
+        de CDB. Tudo isso é <b>transferência</b>.</p>
+        <p>Entrada é só o que vem <b>de fora</b>: venda, repasse de venda, aporte seu do bolso pessoal.
+        Saída é só o que vai <b>para fora</b>: fornecedor, imposto, anúncio, pró-labore.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Caixa não é lucro — e por que isso custa dinheiro</summary>
+      <div>
+        <p>Este app é de <b>caixa</b>: conta o dia em que o dinheiro andou. Compra de estoque pesa inteira
+        no mês em que foi paga.</p>
+        <p>No <b>lucro</b> é diferente: a mercadoria só vira custo quando vende. Quem compra R$ 20 mil de
+        estoque num mês em que vendeu R$ 18 mil olha o banco, vê o caixa minguar e conclui que a operação
+        está empatada. Não está — ela transformou caixa em estoque, e é só o estoque girar para o dinheiro
+        voltar.</p>
+        <p>Por isso o nome aqui é <b>“sobra de caixa”</b>, nunca “lucro”. Para lucro, use um DRE.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Como a projeção é montada (e onde ela mente)</summary>
+      <div>
+        <p class="conta">
+          saldo de hoje = <b>disponível</b> de todas as carteiras<br>
+          + o <b>a liberar</b> de cada carteira, diluído nos dias que faltam para liberar<br>
+          + <b>venda nova estimada</b> por dia, só depois do maior prazo de liberação<br>
+          − <b>contas fixas</b> da agenda<br>
+          − <b>compromissos</b> marcados<br>
+          − <b>recompra de estoque</b> planejada
+        </p>
+        <p>Ela mente em três situações, e é bom saber quais: se a premissa de venda diária estiver otimista;
+        se você não lançar as compras de estoque (a curva sobe como se o dinheiro ficasse parado); e se o
+        marketplace atrasar o repasse — para esse caso existe o controle de cenário no painel.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Orçamento por envelopes: a conta da base</summary>
+      <div>
+        <p class="conta">
+          base do mês = <b>entradas do mês</b> − <b>saídas obrigatórias</b><br>
+          envelope = base × percentual + o que sobrou dos meses anteriores<br>
+          disponível no envelope = envelope − gasto do mês naquele envelope
+        </p>
+        <p>Obrigatória é a conta que você não escolhe pagar: imposto, pró-labore, contador, software. Ela
+        sai antes da divisão. O resto é escolha sua, e escolha cabe em envelope.</p>
+        <p>Quando o mês fecha, clique em <b>Virar o mês</b>: o que sobrou em cada envelope vira acumulado.
+        É assim que se junta dinheiro para a compra grande sem estourar um mês só.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Quando investir em produto novo</summary>
+      <div>
+        <p class="conta">
+          poder de compra livre = <b>disponível hoje</b> − <b>compromissos de 30 dias</b> − <b>reserva</b> − <b>colchão</b>
+        </p>
+        <p>Se esse número é negativo, não existe compra para fazer hoje — existe conta para pagar. A aba
+        <b>Investir</b> ainda faz duas perguntas que a maioria não faz: <b>quando</b> cabe (a primeira data em
+        que o pagamento não fura o piso) e <b>em quanto tempo volta</b> (unidades ÷ venda por dia).</p>
+        <p>Lote que leva 6 meses para vender não é estoque, é dinheiro preso. Dois lotes com o mesmo lucro
+        por unidade não valem o mesmo: ganha o que gira mais rápido, porque o mesmo dinheiro faz a volta
+        mais vezes no ano.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
+      <summary>Seus dados: onde ficam e como não perder</summary>
+      <div>
+        <p>Tudo fica no <b>localStorage</b> deste navegador. Não existe servidor, conta ou login — e também
+        não existe recuperação. Limpar dados do navegador apaga os lançamentos.</p>
+        <p>Baixe o backup <b>.json</b> em Ajustes com frequência e guarde fora do computador. O backup
+        restaura o app inteiro: lançamentos, carteiras, contas fixas, orçamento e regras.</p>
+        <p>Se este app estiver publicado no GitHub Pages, o endereço é público, mas <b>os seus números não
+        vão para lá</b>: eles nunca saem do seu navegador. Só não comite o arquivo de backup no
+        repositório.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<footer class="rodape">
+  <p>
+    <b>Caixa da Empresa</b> — controle de caixa, projeção e orçamento. Site estático, sem servidor e sem
+    dependências: os seus dados ficam neste navegador.
+    Regime de caixa: “sobra” não é lucro.
+  </p>
+</footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/nucleo.js"></script>
+<script src="assets/exemplo.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "caixa-empresa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Controle de caixa da empresa: lancamentos, projecao de saldo dia a dia, orcamento por envelopes, reserva de emergencia e decisao de compra de produto novo",
+  "scripts": {
+    "test": "node tools/testar.js",
+    "start": "node tools/servidor.js"
+  },
+  "keywords": ["fluxo-de-caixa", "orcamento", "marketplace", "projecao", "pme"],
+  "license": "MIT",
+  "engines": { "node": ">=18" }
+}
