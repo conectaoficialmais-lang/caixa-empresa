@@ -898,6 +898,118 @@ function classificarLote(candidatos, regras) {
   });
 }
 
+/* ================================================== ENTENDER O CAIXA ==== */
+
+/**
+ * A conta de uma linha que explica a curva inteira.
+ *
+ * Toda projecao de caixa se resume a isto: o que entra por mes contra o que sai
+ * por mes. Se sai mais do que entra, a curva cai — e nao adianta mexer no app,
+ * porque o problema esta na operacao, nao no grafico.
+ */
+function balancoMensal(premissas, custoFixoMensal) {
+  const p = premissas || {};
+  const entra = (p.usarEntradaDiaria === false ? 0 : p.entradaDiaria || 0) * 30;
+  const recompra = p.recompraMensal || 0;
+  const fixo = custoFixoMensal || 0;
+  const sai = recompra + fixo;
+  return {
+    entra: Math.round(entra),
+    recompra: recompra,
+    fixo: fixo,
+    sai: sai,
+    sobra: Math.round(entra - sai),
+    fecha: entra >= sai,
+    // quanto a recompra teria de ser para o mes fechar no zero
+    recompraQueCabe: Math.max(0, Math.round(entra - fixo)),
+  };
+}
+
+/**
+ * O que ainda falta preencher para o app parar de chutar.
+ *
+ * A ordem importa: cada item so faz sentido depois do anterior. Devolve os
+ * pendentes do mais importante para o menos — e so isso, sem elogio nem
+ * barra de progresso fingindo que esta quase.
+ */
+function oQueFalta(estado) {
+  const e = estado || {};
+  const carteiras = e.carteiras || [];
+  const recorrentes = (e.recorrentes || []).filter((r) => r.ativo !== false);
+  const premissas = e.premissas || {};
+  const faltas = [];
+
+  if (!carteiras.length) {
+    faltas.push({
+      id: 'carteiras',
+      titulo: 'Onde está o seu dinheiro',
+      porque: 'Sem as carteiras, o app não sabe de quanto você parte — e toda a projeção vira chute.',
+      aba: 'ajustes',
+      grave: true,
+    });
+  } else if (carteiras.every((c) => !c.disponivel && !c.aLiberar)) {
+    faltas.push({
+      id: 'saldos',
+      titulo: 'Os saldos das carteiras estão zerados',
+      porque: 'As carteiras existem, mas estão todas em zero. Digite o que cada uma tem hoje.',
+      aba: 'ajustes',
+      grave: true,
+    });
+  }
+
+  if (!recorrentes.length) {
+    faltas.push({
+      id: 'fixas',
+      titulo: 'O que você paga todo mês',
+      porque: 'Sem as contas fixas, o app acha que a empresa não tem custo nenhum — e diz que sobra mais do que sobra.',
+      aba: 'agenda',
+      grave: true,
+    });
+  }
+
+  if (!premissas.entradaDiaria && premissas.usarEntradaDiaria !== false) {
+    faltas.push({
+      id: 'entrada',
+      titulo: 'Quanto entra de venda por dia',
+      porque: 'É o que faz a curva subir depois que o dinheiro preso no marketplace acaba de liberar.',
+      aba: 'ajustes',
+      grave: true,
+    });
+  }
+
+  if (!premissas.recompraMensal) {
+    faltas.push({
+      id: 'recompra',
+      titulo: 'Quanto você recompra de estoque por mês',
+      porque: 'Sem isso a curva sobe como se o dinheiro ficasse parado, e o app aprova compras que não cabem.',
+      aba: 'ajustes',
+      grave: true,
+    });
+  }
+
+  if (!(e.lancamentos || []).some((l) => l.boleto)) {
+    faltas.push({
+      id: 'boletos',
+      titulo: 'As contas que vão vencer',
+      porque: 'Guardar os boletos é o que transforma susto em agenda.',
+      aba: 'boletos',
+      grave: false,
+    });
+  }
+
+  if (!e.backupEm) {
+    faltas.push({
+      id: 'backup',
+      titulo: 'Baixar o primeiro backup',
+      porque: 'Os dados vivem só neste navegador. Limpar o navegador apaga tudo, e não há como recuperar.',
+      aba: 'ajustes',
+      grave: false,
+    });
+  }
+
+  return faltas;
+}
+
 /* ========================================================= BOLETOS ====== */
 
 /**
@@ -1105,6 +1217,8 @@ const Nucleo = {
   marcarParecidos: marcarParecidos,
   aplicarRegras: aplicarRegras,
   classificarLote: classificarLote,
+  balancoMensal: balancoMensal,
+  oQueFalta: oQueFalta,
   situacaoBoleto: situacaoBoleto,
   resumoBoletos: resumoBoletos,
   gerarParcelas: gerarParcelas,

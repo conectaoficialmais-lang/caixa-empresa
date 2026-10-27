@@ -607,6 +607,49 @@ conferir('colunas separadas: credito e entrada', mapeadoCD.candidatos[0].tipo, '
 conferir('colunas separadas: debito e saida', mapeadoCD.candidatos[1].tipo, 'saida');
 conferir('colunas separadas: valor do debito', mapeadoCD.candidatos[1].valor, 250000);
 
+/* -------------------------------------------- a conta de uma linha ----- */
+
+// o caso real que travou o Fabio: R$ 492/dia de venda contra R$ 16 mil de
+// recompra e R$ 1.000 de custo fixo — a curva cai porque a operacao nao fecha
+const bal = N.balancoMensal({ entradaDiaria: 49200, recompraMensal: 1600000 }, 100000);
+conferir('entra = entrada diaria x 30', bal.entra, 1476000);
+conferir('sai = recompra + custo fixo', bal.sai, 1700000);
+conferir('sobra e negativa', bal.sobra, -224000);
+conferir('acusa que o mes nao fecha', bal.fecha, false);
+conferir('diz qual recompra caberia', bal.recompraQueCabe, 1376000);
+
+const balOk = N.balancoMensal({ entradaDiaria: 83000, recompraMensal: 1200000 }, 806000);
+conferir('mes que fecha', balOk.fecha, true);
+conferir('sobra do mes que fecha', balOk.sobra, 2490000 - 2006000);
+conferir('sem premissa de venda, nada entra', N.balancoMensal({ entradaDiaria: 83000, usarEntradaDiaria: false }, 0).entra, 0);
+
+/* ----------------------------------------------- o que falta preencher - */
+
+const vazio = N.oQueFalta({});
+conferir('app vazio: carteiras vem primeiro', vazio[0].id, 'carteiras');
+conferir('app vazio lista tudo que falta', vazio.length, 6);
+conferir('backup e o ultimo da fila', vazio[vazio.length - 1].id, 'backup');
+
+const meioCaminho = N.oQueFalta({
+  carteiras: [{ id: 'inter', disponivel: 100000 }],
+  recorrentes: [{ id: 'p', valor: 400000, dia: 5 }],
+  premissas: { entradaDiaria: 80000, recompraMensal: 1200000 },
+  lancamentos: [{ id: 'b', boleto: true }],
+  backupEm: '2026-10-26T00:00:00.000Z',
+});
+conferir('preencheu tudo: nada falta', meioCaminho.length, 0);
+
+conferir(
+  'carteira sem saldo nenhum e avisada',
+  N.oQueFalta({ carteiras: [{ id: 'x', disponivel: 0, aLiberar: 0 }] }).map((f) => f.id).indexOf('saldos'),
+  0
+);
+conferir(
+  'conta fixa desligada nao conta como preenchida',
+  N.oQueFalta({ carteiras: [{ id: 'x', disponivel: 1 }], recorrentes: [{ id: 'r', ativo: false }] }).map((f) => f.id).indexOf('fixas'),
+  0
+);
+
 /* ------------------------------------------------------------ boletos -- */
 
 const HOJE_B = '2026-10-26';

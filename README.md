@@ -9,7 +9,7 @@ quanto, e em quanto tempo esse dinheiro volta?*
 
 Site estático, sem build e sem dependências: HTML, CSS e três arquivos de JavaScript.
 
-![testes](https://img.shields.io/badge/testes-206%20passando-brightgreen)
+![testes](https://img.shields.io/badge/testes-220%20passando-brightgreen)
 ![dependências](https://img.shields.io/badge/depend%C3%AAncias-0-blue)
 
 ---
@@ -57,6 +57,7 @@ compra livre**.
 
 | Aba | Para que serve |
 | --- | --- |
+| **Começar aqui** | Passo a passo de primeira vez: quatro perguntas em português de gente, que preenchem carteiras, contas fixas e premissas — e terminam dizendo, em uma frase, se o seu mês fecha. |
 | **Painel** | Caixa total, disponível, a liberar, menor saldo do horizonte, boletos em aberto, sobrevida sem vender. Projeção dia a dia, simulador de cenário (vendas caem / repasse atrasa) e o “consigo pagar?”. |
 | **Boletos** | Todas as contas a pagar, com vencimento, interruptor de pago, parcelamento e leitura da linha digitável. Avisa o que venceu e responde se o mês que vem cabe no caixa. |
 | **Lançamentos** | Entradas, saídas e transferências, com filtros, busca e marcação de gasto pessoal pago pela empresa. |
@@ -73,7 +74,7 @@ compra livre**.
 ## As contas
 
 Elas vivem todas em [`assets/nucleo.js`](assets/nucleo.js), que é puro (não toca na tela) e tem
-206 testes em [`tools/testar.js`](tools/testar.js).
+220 testes em [`tools/testar.js`](tools/testar.js).
 
 ### Projeção de saldo
 
@@ -214,7 +215,7 @@ assets/nucleo.js    as contas, puras e testadas (roda no navegador e no Node)
 assets/app.js       estado, telas, gráficos e eventos
 assets/exemplo.js   dados fictícios do botão "carregar exemplo"
 assets/style.css    tema escuro e claro
-tools/testar.js     206 testes das funções puras
+tools/testar.js     220 testes das funções puras
 tools/servidor.js   servidor estático mínimo
 ```
 

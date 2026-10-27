@@ -123,6 +123,7 @@ let estado = estadoPadrao();
 const vista = {
   cenario: { vendas: 0, atrasoLiberacao: 0 },
   mesesRelatorio: 6,
+  passo: 0,
   editando: null,
   editandoBoleto: null,
   filtros: { mes: '', tipo: '', categoria: '', carteira: '', busca: '' },
@@ -447,32 +448,32 @@ function pintarPainel() {
   const emAberto = N.resumoBoletos(boletosDe().filter((b) => b.status !== 'realizado'), N.hojeIso());
 
   const kpis = [
-    { rotulo: 'Caixa total da empresa', valor: dinheiro(soma.total), nota: 'disponível + a liberar, todas as carteiras', destaque: true, luz: 'ciano' },
-    { rotulo: 'Disponível hoje', valor: dinheiro(soma.disponivel), nota: 'dá para gastar agora', luz: 'azul' },
-    { rotulo: 'A liberar', valor: dinheiro(soma.aLiberar), nota: 'venda feita que o marketplace ainda não soltou', luz: 'roxo' },
+    { rotulo: 'Caixa total da empresa', expl: 'Tudo que é seu, somado: o que dá para sacar agora mais o que o marketplace ainda vai liberar. <b>Não é o saldo do banco</b> — o banco é só um pedaço.', valor: dinheiro(soma.total), nota: 'disponível + a liberar, todas as carteiras', destaque: true, luz: 'ciano' },
+    { rotulo: 'Disponível hoje', expl: 'O que dá para gastar <b>agora</b>, sem esperar nada liberar. É este número que paga o boleto de hoje.', valor: dinheiro(soma.disponivel), nota: 'dá para gastar agora', luz: 'azul' },
+    { rotulo: 'A liberar', expl: 'Venda já feita que o marketplace ainda não soltou. É seu, mas não está na mão — por isso tem data para chegar.', valor: dinheiro(soma.aLiberar), nota: 'venda feita que o marketplace ainda não soltou', luz: 'roxo' },
     {
-      rotulo: 'Menor saldo em ' + proj.horizonte + 'd',
+      rotulo: 'Menor saldo em ' + proj.horizonte + 'd', expl: '<b>O número mais importante da tela.</b> É o pior dia do período, já contando tudo que vai entrar e sair. Se estiver negativo, nesse dia falta dinheiro — e você está vendo isso com semanas de antecedência.',
       valor: dinheiro(proj.menorSaldo),
       nota: 'no dia ' + N.formatarData(proj.dataMenorSaldo),
       cor: proj.menorSaldo < 0 ? 'vermelho' : proj.menorSaldo < piso() ? 'amarelo' : 'verde',
       luz: proj.menorSaldo < 0 ? 'vermelho' : proj.menorSaldo < piso() ? 'amarelo' : 'verde',
     },
     {
-      rotulo: 'Boletos em aberto',
+      rotulo: 'Boletos em aberto', expl: 'A soma das contas que você guardou e ainda não pagou. Elas já estão descontadas da projeção acima.',
       valor: dinheiro(emAberto.aberto),
       nota: emAberto.vencido ? dinheiro(emAberto.vencido) + ' já venceu' : emAberto.quantidade + ' contas guardadas',
       cor: emAberto.vencido ? 'vermelho' : '',
       luz: emAberto.vencido ? 'vermelho' : 'laranja',
     },
     {
-      rotulo: 'Sobra de caixa do mês',
+      rotulo: 'Sobra de caixa do mês', expl: 'Entradas menos saídas do mês, contando o dia em que o dinheiro andou. <b>Não é lucro:</b> compra de estoque pesa inteira aqui, mas só vira custo de verdade quando a mercadoria vende.',
       valor: dinheiro(fechado.resultado, { comMais: true }),
       nota: 'não é lucro — é caixa',
       cor: fechado.resultado >= 0 ? 'verde' : 'vermelho',
       luz: fechado.resultado >= 0 ? 'verde' : 'vermelho',
     },
     {
-      rotulo: 'Sobrevive sem vender',
+      rotulo: 'Sobrevive sem vender', expl: 'Caixa total dividido pelo custo fixo do mês. Quantos meses a empresa paga as contas se não vender mais nada.',
       valor: runway === null ? '—' : runway.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' meses',
       nota: cf ? 'custo fixo de ' + dinheiro(cf) + '/mês' : 'cadastre as contas fixas',
       cor: runway === null ? '' : runway < 1 ? 'vermelho' : runway < 3 ? 'amarelo' : 'verde',
@@ -482,13 +483,19 @@ function pintarPainel() {
 
   $('#kpis').innerHTML = kpis
     .map(
-      (k) =>
+      (k, i) =>
         '<div class="kpi' + (k.destaque ? ' destaque' : '') + '" data-luz="' + (k.luz || 'azul') + '">' +
-        '<div class="kpi-rotulo">' + esc(k.rotulo) + '</div>' +
+        '<div class="kpi-rotulo">' + esc(k.rotulo) +
+        (k.expl ? '<button class="kpi-ajuda" type="button" data-acao="explicar" data-id="kpi-' + i + '" title="O que é isto?">?</button>' : '') +
+        '</div>' +
         '<div class="kpi-valor ' + (k.cor || '') + '">' + esc(k.valor) + '</div>' +
-        '<div class="kpi-nota">' + esc(k.nota) + '</div></div>'
+        '<div class="kpi-nota">' + esc(k.nota) + '</div>' +
+        (k.expl ? '<div class="kpi-expl" id="kpi-' + i + '" hidden>' + k.expl + '</div>' : '') +
+        '</div>'
     )
     .join('');
+
+  pintarFaltaPreencher();
 
   pintarAlertas(soma, proj, fechado, runway);
 
@@ -565,6 +572,41 @@ function pintarPainel() {
     : '<p class="vazio">Nada marcado para os próximos 30 dias.</p>';
 }
 
+/**
+ * "O que falta preencher": a lista honesta do que ainda nao foi dito ao app.
+ * Enquanto houver item grave, os numeros do painel sao chute — e o cartao diz
+ * isso com todas as letras, em vez de mostrar grafico bonito sobre nada.
+ */
+function pintarFaltaPreencher() {
+  const falta = N.oQueFalta(estado);
+  const graves = falta.filter((f) => f.grave);
+  const alvo = $('#falta-preencher');
+
+  if (!falta.length) {
+    alvo.innerHTML = '';
+    return;
+  }
+
+  alvo.innerHTML =
+    '<div class="cartao brilho" data-luz="' + (graves.length ? 'amarelo' : 'azul') + '" style="margin-bottom:14px">' +
+    '<div class="cartao-cabeca"><h3>' + (graves.length ? 'Faltam ' + graves.length + ' coisas para os números ficarem de pé' : 'Dois acabamentos e fica completo') + '</h3>' +
+    '<button class="btn btn-mini" type="button" data-acao="abrir-passos">Preencher pelo passo a passo</button></div>' +
+    (graves.length
+      ? '<p class="ajuda" style="margin-top:0">Enquanto isto não for preenchido, a projeção lá embaixo está chutando. Clique em qualquer item para ir direto ao lugar.</p>'
+      : '') +
+    '<div class="falta-lista">' +
+    falta
+      .map(
+        (f) =>
+          '<button class="falta-item" type="button" data-acao="ir-para" data-id="' + esc(f.aba) + '">' +
+          '<span class="falta-bola ' + (f.grave ? 'grave' : '') + '">' + (f.grave ? '!' : '·') + '</span>' +
+          '<span><b>' + esc(f.titulo) + '</b><br><span class="ajuda">' + esc(f.porque) + '</span></span>' +
+          '<span class="falta-seta">→</span></button>'
+      )
+      .join('') +
+    '</div></div>';
+}
+
 function pintarAlertas(soma, proj, fechado, runway) {
   const avisos = [];
   const p = piso();
@@ -628,6 +670,272 @@ function pintarCenario(proj) {
     ' — ' + esc(dinheiro(Math.abs(difMenor))) + (difMenor < 0 ? ' pior' : ' melhor') + ' que o normal.' +
     (proj.negativa ? ' <b>O caixa não aguenta.</b>' : proj.furaPiso ? ' Fura o piso de segurança.' : ' Ainda aguenta.') +
     '</div></div>';
+}
+
+/* ==================================================== TELA: COMECAR ===== */
+
+/**
+ * Passo a passo de primeira vez.
+ *
+ * O app tem dez abas e dezenas de campos, e isso trava quem abre pela primeira
+ * vez. Aqui ele faz UMA pergunta por tela, em portugues de gente, na ordem em
+ * que uma pergunta depende da anterior — e mostra, na hora, a consequencia do
+ * que foi digitado. Nada e obrigatorio: da para pular e voltar depois.
+ */
+
+const CARTEIRAS_SUGERIDAS = [
+  { id: 'banco', nome: 'Banco (conta corrente)', dias: 0, reserva: false, dica: 'o saldo da conta da empresa agora' },
+  { id: 'reserva', nome: 'Reserva (caixinha / CDB)', dias: 1, reserva: true, dica: 'o dinheiro que você não encosta' },
+  { id: 'mp', nome: 'Mercado Pago / Mercado Livre', dias: 14, reserva: false, dica: 'o que dá para sacar e o que está pendente' },
+  { id: 'shopee', nome: 'Shopee', dias: 20, reserva: false, dica: 'idem, se você vende por lá' },
+];
+
+const FIXAS_SUGERIDAS = [
+  { id: 'prolabore', nome: 'Pró-labore (o seu salário)', dia: 5, categoria: 'prolabore' },
+  { id: 'imposto', nome: 'Imposto (DAS)', dia: 20, categoria: 'imposto' },
+  { id: 'ads', nome: 'Anúncios patrocinados', dia: 15, categoria: 'ads' },
+  { id: 'contador', nome: 'Contador', dia: 10, categoria: 'contador' },
+  { id: 'software', nome: 'Softwares e assinaturas', dia: 8, categoria: 'software' },
+  { id: 'aluguel', nome: 'Aluguel / depósito', dia: 5, categoria: 'outra-saida' },
+];
+
+const PASSOS = ['Começo', 'Seu dinheiro', 'Contas do mês', 'Venda e compra', 'Pronto'];
+
+function emCentavos(id) {
+  return N.paraCentavos($('#' + id) ? $('#' + id).value : '') || 0;
+}
+
+function valorCampo(c) {
+  return c ? (c / 100).toFixed(2).replace('.', ',') : '';
+}
+
+function pintarTrilha() {
+  $('#trilha').innerHTML = PASSOS.map(
+    (p, i) =>
+      '<li class="trilha-item' + (i === vista.passo ? ' agora' : i < vista.passo ? ' feito' : '') + '">' +
+      '<span class="trilha-bola">' + (i < vista.passo ? '✓' : i + 1) + '</span>' +
+      '<span class="trilha-nome">' + esc(p) + '</span></li>'
+  ).join('');
+}
+
+function pintarPasso() {
+  pintarTrilha();
+  const alvo = $('#passo-conteudo');
+  const p = vista.passo;
+
+  $('#btn-passo-voltar').hidden = p === 0;
+  $('#btn-passo-pular').hidden = p === 0 || p === 4;
+  $('#btn-passo-avancar').textContent = p === 4 ? 'Ver o painel' : p === 0 ? 'Vamos lá →' : 'Continuar →';
+
+  if (p === 0) {
+    alvo.innerHTML =
+      '<h2 style="font-size:24px">Vamos preencher isto juntos</h2>' +
+      '<p class="ajuda" style="font-size:14.5px;max-width:62ch">São quatro perguntas. Nenhuma tem pegadinha, e dá para pular qualquer uma e voltar depois. No fim, o app te diz em uma frase se o seu mês fecha ou não.</p>' +
+      '<p class="explica" style="margin-top:18px"><b>O que o app faz:</b> ele guarda o que entra e o que sai, projeta o saldo dos próximos meses dia a dia, e avisa <b>antes</b> do dia em que o dinheiro vai faltar. Também guarda os boletos e diz quando dá para comprar estoque novo.</p>' +
+      '<h3 style="margin-top:18px">Tenha em mãos</h3>' +
+      '<ul class="lista-simples">' +
+      '<li>O saldo de hoje das suas contas e carteiras</li>' +
+      '<li>As contas que você paga todo mês (pró-labore, imposto, contador…)</li>' +
+      '<li>Quanto caiu de venda no mês passado</li>' +
+      '<li>Quanto você paga de fornecedor por mês, mais ou menos</li>' +
+      '</ul>' +
+      '<p class="ajuda">Não tem algum número na ponta da língua? Chute por cima e corrija depois — um chute anotado vale mais que um número certo que não existe.</p>';
+    return;
+  }
+
+  if (p === 1) {
+    alvo.innerHTML =
+      '<h2 style="font-size:22px">Onde está o seu dinheiro hoje?</h2>' +
+      '<p class="ajuda" style="font-size:14px;max-width:64ch">Preencha só as que você usa; deixe as outras em branco. <b>Dá para sacar hoje</b> é o que está na mão. <b>Esperando liberar</b> é venda já feita que o marketplace ainda não soltou.</p>' +
+      '<div class="passo-grade" style="margin-top:16px">' +
+      CARTEIRAS_SUGERIDAS.map((c) => {
+        const existente = estado.carteiras.find((x) => x.id === c.id || x.nome === c.nome);
+        return (
+          '<div class="passo-item">' +
+          '<div class="passo-item-nome">' + esc(c.nome) + (c.reserva ? ' <span class="selo azul">reserva</span>' : '') + '</div>' +
+          '<div class="ajuda" style="margin:0 0 8px">' + esc(c.dica) + '</div>' +
+          '<div class="linha">' +
+          '<label class="cresce"><span class="rotulo">Dá para sacar hoje</span><input class="direita" type="text" inputmode="decimal" id="w-disp-' + c.id + '" value="' + valorCampo(existente ? existente.disponivel : 0) + '" placeholder="0,00"></label>' +
+          (c.dias > 1
+            ? '<label class="cresce"><span class="rotulo">Esperando liberar</span><input class="direita" type="text" inputmode="decimal" id="w-lib-' + c.id + '" value="' + valorCampo(existente ? existente.aLiberar : 0) + '" placeholder="0,00"></label>' +
+              '<label style="flex:0 0 110px"><span class="rotulo">Em quantos dias</span><input class="direita" type="number" min="0" max="90" id="w-dias-' + c.id + '" value="' + (existente ? existente.diasLiberacao : c.dias) + '"></label>'
+            : '') +
+          '</div></div>'
+        );
+      }).join('') +
+      '</div>' +
+      '<p class="ajuda">Tem outra conta ou carteira? Adicione depois em <b>Ajustes → Carteiras</b>.</p>';
+    return;
+  }
+
+  if (p === 2) {
+    alvo.innerHTML =
+      '<h2 style="font-size:22px">O que você paga todo mês, sem escapatória?</h2>' +
+      '<p class="ajuda" style="font-size:14px;max-width:64ch">As contas que chegam todo mês no mesmo dia. Deixe em branco as que não existem. É isto que o app usa para saber quanto a empresa custa parada.</p>' +
+      '<div class="passo-grade" style="margin-top:16px">' +
+      FIXAS_SUGERIDAS.map((f) => {
+        const existente = estado.recorrentes.find((r) => r.id === f.id);
+        return (
+          '<div class="passo-item">' +
+          '<div class="passo-item-nome">' + esc(f.nome) + '</div>' +
+          '<div class="linha" style="margin-top:8px">' +
+          '<label class="cresce"><span class="rotulo">Quanto</span><input class="direita" type="text" inputmode="decimal" id="w-fixa-' + f.id + '" value="' + valorCampo(existente ? existente.valor : 0) + '" placeholder="0,00"></label>' +
+          '<label style="flex:0 0 100px"><span class="rotulo">Dia</span><input class="direita" type="number" min="1" max="31" id="w-dia-' + f.id + '" value="' + (existente ? existente.dia : f.dia) + '"></label>' +
+          '</div></div>'
+        );
+      }).join('') +
+      '</div>';
+    return;
+  }
+
+  if (p === 3) {
+    const cf = custoFixoMensal();
+    alvo.innerHTML =
+      '<h2 style="font-size:22px">Quanto entra e quanto você recompra?</h2>' +
+      '<p class="ajuda" style="font-size:14px;max-width:64ch">Estes dois números mandam na curva inteira. É aqui que a maioria dos apps mente e o seu vai falar a verdade.</p>' +
+
+      '<div class="passo-item" style="margin-top:16px">' +
+      '<div class="passo-item-nome">1. Quanto <b>caiu no banco</b> de venda no mês passado?</div>' +
+      '<div class="ajuda" style="margin:2px 0 8px">O valor líquido que você recebeu, já sem a comissão do marketplace — não o faturamento bruto.</div>' +
+      '<div class="linha">' +
+      '<label class="cresce" style="max-width:220px"><span class="rotulo">No mês inteiro</span><input class="direita" type="text" inputmode="decimal" id="w-mes" placeholder="25.000,00" value="' + valorCampo(estado.premissas.entradaDiaria ? estado.premissas.entradaDiaria * 30 : 0) + '"></label>' +
+      '<div class="cresce" id="w-resultado-dia" style="align-self:center"></div>' +
+      '</div></div>' +
+
+      '<div class="passo-item" style="margin-top:12px">' +
+      '<div class="passo-item-nome">2. Quanto você paga de <b>fornecedor</b> por mês?</div>' +
+      '<div class="ajuda" style="margin:2px 0 8px">A reposição de estoque, na média dos últimos meses. Sem isto a curva sobe como se o dinheiro ficasse parado na conta.</div>' +
+      '<div class="linha">' +
+      '<label class="cresce" style="max-width:220px"><span class="rotulo">Por mês</span><input class="direita" type="text" inputmode="decimal" id="w-recompra" placeholder="13.000,00" value="' + valorCampo(estado.premissas.recompraMensal) + '"></label>' +
+      '<label style="flex:0 0 150px"><span class="rotulo">Dia que costuma pagar</span><input class="direita" type="number" min="1" max="28" id="w-dia-recompra" value="' + (estado.premissas.diaRecompra || 10) + '"></label>' +
+      '<label class="cresce" style="max-width:200px"><span class="rotulo">Colchão de segurança</span><input class="direita" type="text" inputmode="decimal" id="w-colchao" placeholder="1.000,00" value="' + valorCampo(estado.premissas.colchao) + '"></label>' +
+      '</div></div>' +
+
+      '<div id="w-veredito" style="margin-top:16px"></div>' +
+      '<p class="ajuda">Custo fixo somado no passo anterior: <b>' + esc(dinheiro(cf)) + '/mês</b>.</p>';
+
+    ['w-mes', 'w-recompra'].forEach((id) => $('#' + id).addEventListener('input', pintarVeredito));
+    pintarVeredito();
+    return;
+  }
+
+  // passo 4 — fechamento
+  const soma = N.somarCarteiras(estado.carteiras, estado.lancamentos);
+  const cf = custoFixoMensal();
+  const bal = N.balancoMensal(estado.premissas, cf);
+  const falta = N.oQueFalta(estado);
+
+  alvo.innerHTML =
+    '<h2 style="font-size:22px">Pronto. É isto que o app já sabe:</h2>' +
+    '<div class="kpis" style="margin-top:16px">' +
+    '<div class="kpi" data-luz="ciano"><div class="kpi-rotulo">Caixa hoje</div><div class="kpi-valor">' + esc(dinheiro(soma.total)) + '</div><div class="kpi-nota">' + esc(dinheiro(soma.disponivel)) + ' na mão</div></div>' +
+    '<div class="kpi" data-luz="amarelo"><div class="kpi-rotulo">Custo fixo</div><div class="kpi-valor">' + esc(dinheiro(cf)) + '</div><div class="kpi-nota">todo mês, sem vender nada</div></div>' +
+    '<div class="kpi" data-luz="' + (bal.fecha ? 'verde' : 'vermelho') + '"><div class="kpi-rotulo">Sobra por mês</div><div class="kpi-valor ' + (bal.fecha ? 'verde' : 'vermelho') + '">' + esc(dinheiro(bal.sobra, { comMais: true })) + '</div><div class="kpi-nota">entra ' + esc(moedaCurtaSegura(bal.entra)) + ' · sai ' + esc(moedaCurtaSegura(bal.sai)) + '</div></div>' +
+    '</div>' +
+    vereditoHtml(bal) +
+    (falta.length
+      ? '<h3 style="margin-top:18px">Ainda dá para melhorar</h3>' +
+        '<ul class="lista-simples">' + falta.map((f) => '<li><b>' + esc(f.titulo) + '</b> — ' + esc(f.porque) + '</li>').join('') + '</ul>'
+      : '<div class="aviso bom" style="margin-top:16px"><span class="aviso-icone">✓</span><div>Está tudo preenchido. O painel já é confiável.</div></div>') +
+    '<h3 style="margin-top:18px">O que fazer agora</h3>' +
+    '<ul class="lista-simples">' +
+    '<li>Guardar os boletos do mês na aba <b>Boletos</b> — o botão <b>“Trazer as contas fixas”</b> cria todos de uma vez.</li>' +
+    '<li>Importar o extrato do banco na aba <b>Importar</b>, em vez de digitar lançamento por lançamento.</li>' +
+    '<li>Baixar o backup em <b>Ajustes</b>. Os dados vivem só neste navegador.</li>' +
+    '</ul>';
+}
+
+function moedaCurtaSegura(c) {
+  return N.moedaCurta(c);
+}
+
+/** A frase que explica a curva: entra tanto, sai tanto, e a consequencia. */
+function vereditoHtml(bal) {
+  if (!bal.entra && !bal.sai) {
+    return '<div class="aviso info" style="margin-top:14px"><span class="aviso-icone">◆</span><div>Preencha os dois números acima para eu te dizer se o mês fecha.</div></div>';
+  }
+  if (bal.fecha) {
+    return (
+      '<div class="aviso bom" style="margin-top:14px"><span class="aviso-icone">✓</span><div>' +
+      'Entram <b>' + esc(dinheiro(bal.entra)) + '</b> por mês e saem <b>' + esc(dinheiro(bal.sai)) + '</b> ' +
+      '(' + esc(dinheiro(bal.recompra)) + ' de fornecedor + ' + esc(dinheiro(bal.fixo)) + ' de contas fixas). ' +
+      'Sobram <b>' + esc(dinheiro(bal.sobra)) + '</b>. O mês fecha — a curva do painel vai subir.' +
+      '</div></div>'
+    );
+  }
+  return (
+    '<div class="aviso ruim" style="margin-top:14px"><span class="aviso-icone">▲</span><div>' +
+    'Entram <b>' + esc(dinheiro(bal.entra)) + '</b> por mês e saem <b>' + esc(dinheiro(bal.sai)) + '</b> ' +
+    '(' + esc(dinheiro(bal.recompra)) + ' de fornecedor + ' + esc(dinheiro(bal.fixo)) + ' de contas fixas). ' +
+    '<b>Faltam ' + esc(dinheiro(-bal.sobra)) + ' todo mês</b> — por isso a curva do painel vai cair, e cada mês termina mais fundo que o anterior.' +
+    '<br><br>Isso não é defeito do app: é a operação. Ou entra mais venda, ou a recompra precisa baixar para cerca de <b>' + esc(dinheiro(bal.recompraQueCabe)) + '</b> por mês até o estoque girar.' +
+    '</div></div>'
+  );
+}
+
+function pintarVeredito() {
+  const entradaMes = emCentavos('w-mes');
+  const diaria = Math.round(entradaMes / 30);
+  $('#w-resultado-dia').innerHTML = entradaMes
+    ? '<span class="selo verde">dá ' + esc(dinheiro(diaria)) + ' por dia</span>'
+    : '<span class="ajuda">divido por 30 para achar a média diária</span>';
+  $('#w-veredito').innerHTML = vereditoHtml(N.balancoMensal({ entradaDiaria: diaria, recompraMensal: emCentavos('w-recompra') }, custoFixoMensal()));
+}
+
+/** Guarda o que foi digitado no passo atual. Sair sem salvar seria cruel. */
+function salvarPasso() {
+  const p = vista.passo;
+
+  if (p === 1) {
+    CARTEIRAS_SUGERIDAS.forEach((c) => {
+      const disp = emCentavos('w-disp-' + c.id);
+      const lib = $('#w-lib-' + c.id) ? emCentavos('w-lib-' + c.id) : 0;
+      const dias = $('#w-dias-' + c.id) ? +$('#w-dias-' + c.id).value || 0 : c.dias;
+      let existente = estado.carteiras.find((x) => x.id === c.id || x.nome === c.nome);
+      if (!disp && !lib && !existente) return;
+      if (!existente) {
+        existente = { id: c.id, nome: c.nome, reserva: c.reserva };
+        estado.carteiras.push(existente);
+      }
+      existente.disponivel = disp;
+      existente.aLiberar = lib;
+      existente.diasLiberacao = dias;
+      existente.conferidoEm = N.hojeIso();
+      existente.conferidoEmTs = new Date().toISOString();
+    });
+  }
+
+  if (p === 2) {
+    FIXAS_SUGERIDAS.forEach((f) => {
+      const valor = emCentavos('w-fixa-' + f.id);
+      const dia = +$('#w-dia-' + f.id).value || f.dia;
+      let existente = estado.recorrentes.find((r) => r.id === f.id);
+      if (!valor && !existente) return;
+      if (!existente) {
+        existente = { id: f.id, descricao: f.nome, tipo: 'saida', categoria: f.categoria, carteira: (estado.carteiras[0] || {}).id || '', ativo: true };
+        estado.recorrentes.push(existente);
+      }
+      existente.valor = valor;
+      existente.dia = dia;
+      existente.ativo = valor > 0;
+    });
+  }
+
+  if (p === 3) {
+    estado.premissas.entradaDiaria = Math.round(emCentavos('w-mes') / 30);
+    estado.premissas.usarEntradaDiaria = true;
+    estado.premissas.recompraMensal = emCentavos('w-recompra');
+    estado.premissas.diaRecompra = Math.min(28, Math.max(1, +$('#w-dia-recompra').value || 10));
+    estado.premissas.colchao = emCentavos('w-colchao');
+  }
+
+  if (p >= 1) salvar();
+}
+
+function irParaPasso(n) {
+  vista.passo = Math.max(0, Math.min(PASSOS.length - 1, n));
+  pintarPasso();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ==================================================== TELA: BOLETOS ===== */
@@ -1451,6 +1759,7 @@ function pintarAjustes() {
 /* ========================================================== PINTAR ====== */
 
 function pintar() {
+  pintarPasso();
   pintarPainel();
   pintarBoletos();
   pintarFormLancamento();
@@ -1566,6 +1875,29 @@ function ligarEventos() {
             : 'Dentro de ' + proj.horizonte + ' dias não existe data em que ele caiba — esse valor é grande demais para o caixa atual.')) +
       '</div></div>';
   });
+
+  /* ---------- passo a passo ---------- */
+
+  $('#btn-passo-avancar').addEventListener('click', () => {
+    salvarPasso();
+    if (vista.passo === PASSOS.length - 1) {
+      estado.setupFeito = true;
+      salvar();
+      pintar();
+      trocarAba('painel');
+      toast('Pronto. O painel já está com os seus números.');
+      return;
+    }
+    irParaPasso(vista.passo + 1);
+    pintar();
+  });
+
+  $('#btn-passo-voltar').addEventListener('click', () => {
+    salvarPasso();
+    irParaPasso(vista.passo - 1);
+  });
+
+  $('#btn-passo-pular').addEventListener('click', () => irParaPasso(vista.passo + 1));
 
   /* ---------- boletos ---------- */
 
@@ -2121,6 +2453,12 @@ function ligarEventos() {
     ev.target.value = '';
   });
 
+  $('#btn-refazer-passos').addEventListener('click', () => {
+    vista.passo = 0;
+    pintarPasso();
+    trocarAba('comecar');
+  });
+
   $('#btn-exemplos').addEventListener('click', () => {
     if (estado.lancamentos.length && !confirm('Isso adiciona lançamentos de exemplo junto com os seus. Dá para apagar só os exemplos depois. Continuar?')) return;
     const ex = window.dadosExemplo(N.hojeIso());
@@ -2167,6 +2505,19 @@ function ligarEventos() {
     if (!btn) return;
     const id = btn.dataset.id;
     const acao = btn.dataset.acao;
+
+    if (acao === 'explicar') {
+      const bloco = document.getElementById(id);
+      if (bloco) bloco.hidden = !bloco.hidden;
+    }
+
+    if (acao === 'ir-para') trocarAba(id);
+
+    if (acao === 'abrir-passos') {
+      vista.passo = 0;
+      pintarPasso();
+      trocarAba('comecar');
+    }
 
     if (acao === 'editar') editarLancamento(id);
 
@@ -2436,6 +2787,11 @@ function iniciar() {
   $('#cen-atraso').value = 0;
   ligarEventos();
   pintar();
+
+  // Quem abre o app pela primeira vez cai no passo a passo, nao num painel de
+  // graficos vazios. Depois de terminar (ou de ja ter os dados), nao insiste.
+  const graves = N.oQueFalta(estado).filter((f) => f.grave).length;
+  if (!estado.setupFeito && graves >= 3) trocarAba('comecar');
 }
 
 if (typeof document !== 'undefined') iniciar();

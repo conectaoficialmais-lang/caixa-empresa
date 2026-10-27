@@ -56,6 +56,7 @@
   </div>
 
   <nav class="abas" role="tablist">
+    <button class="aba" role="tab" data-aba="comecar">Começar aqui</button>
     <button class="aba ativa" role="tab" data-aba="painel">Painel</button>
     <button class="aba" role="tab" data-aba="boletos">Boletos <span id="pino-boletos" class="pino" hidden></span></button>
     <button class="aba" role="tab" data-aba="lancamentos">Lançamentos</button>
@@ -71,12 +72,29 @@
 
 <main>
 
+<!-- ============================================================== COMECAR -->
+<section id="painel-comecar" class="painel" role="tabpanel">
+  <ol class="trilha" id="trilha"></ol>
+
+  <div class="cartao brilho" data-luz="ciano">
+    <div id="passo-conteudo"></div>
+    <div class="linha" style="margin-top:20px; border-top:1px solid var(--borda); padding-top:16px">
+      <button id="btn-passo-voltar" class="btn btn-fantasma" type="button">← Voltar</button>
+      <button id="btn-passo-pular" class="btn btn-fantasma" type="button">Pular por agora</button>
+      <button id="btn-passo-avancar" class="btn" type="button" style="margin-left:auto">Continuar →</button>
+    </div>
+  </div>
+</section>
+
 <!-- ================================================================ PAINEL -->
 <section id="painel-painel" class="painel ativo" role="tabpanel">
+
+  <div id="falta-preencher"></div>
 
   <div id="alertas"></div>
 
   <div class="kpis" id="kpis"></div>
+  <p class="ajuda" style="margin:-6px 0 16px">Não entendeu algum número? Clique no <b>?</b> dele.</p>
 
   <div class="cartao">
     <div class="cartao-cabeca">
@@ -618,6 +636,7 @@
       <button id="btn-exportar-csv" class="btn btn-fantasma" type="button">⬇ Lançamentos em CSV</button>
     </div>
     <div class="linha" style="margin-top:16px; border-top:1px solid var(--borda); padding-top:14px">
+      <button id="btn-refazer-passos" class="btn btn-fantasma" type="button">↺ Refazer o passo a passo</button>
       <button id="btn-exemplos" class="btn btn-fantasma" type="button">Carregar dados de exemplo</button>
       <button id="btn-apagar-exemplos" class="btn btn-fantasma" type="button">Apagar só os exemplos</button>
       <button id="btn-zerar" class="btn btn-perigo" type="button" style="margin-left:auto">Apagar tudo e começar do zero</button>

@@ -555,6 +555,129 @@ td.meio, th.meio { text-align: center; }
 tfoot td { font-weight: 650; border-top: 1px solid var(--borda-forte); border-bottom: 0; }
 .vazio { padding: 28px 10px; text-align: center; color: var(--texto-3); font-size: 13.5px; }
 
+/* ------------------------------------------------ passo a passo -------- */
+
+.trilha {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  overflow-x: auto;
+}
+.trilha-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--borda);
+  background: var(--vidro-fraco);
+  color: var(--texto-3);
+  font-size: 13px;
+  white-space: nowrap;
+  flex: none;
+}
+.trilha-bola {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.trilha-item.agora {
+  color: var(--texto);
+  border-color: rgba(56, 217, 240, 0.4);
+  background: var(--azul-fundo);
+  box-shadow: 0 0 20px -8px var(--ciano);
+}
+.trilha-item.agora .trilha-bola { background: linear-gradient(140deg, var(--ciano), var(--azul)); color: #04101c; }
+.trilha-item.feito { color: var(--verde); border-color: rgba(53, 227, 164, 0.3); }
+.trilha-item.feito .trilha-bola { background: var(--verde-fundo); color: var(--verde); }
+
+/* min() no minmax: sem ele a coluna de 330px nao cabe numa tela de 375 e a
+   pagina inteira ganha rolagem lateral */
+.passo-grade { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); }
+.passo-item {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-p);
+  background: var(--vidro-fraco);
+  padding: 13px 14px;
+}
+.passo-item-nome { font-weight: 620; font-size: 14.5px; }
+
+.lista-simples { margin: 8px 0 0; padding-left: 20px; color: var(--texto-2); font-size: 14px; line-height: 1.75; }
+.lista-simples b { color: var(--texto); }
+
+/* ------------------------------------------------ o que falta ---------- */
+
+.falta-lista { display: grid; gap: 7px; }
+.falta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: var(--raio-p);
+  border: 1px solid var(--borda);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--texto);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.12s;
+}
+.falta-item:hover { border-color: var(--borda-forte); transform: translateX(2px); }
+.falta-bola {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--texto-3);
+  font-weight: 700;
+  font-size: 12px;
+}
+.falta-bola.grave { background: var(--amarelo-fundo); color: var(--amarelo); box-shadow: 0 0 12px -4px var(--amarelo); }
+.falta-seta { margin-left: auto; color: var(--texto-3); flex: none; }
+.falta-item .ajuda { margin: 2px 0 0; }
+
+/* ------------------------------------------------ ajuda do KPI --------- */
+
+.kpi-rotulo { display: flex; align-items: center; gap: 6px; }
+.kpi-ajuda {
+  margin-left: auto;
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--borda-forte);
+  background: none;
+  color: var(--texto-3);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.kpi-ajuda:hover { color: var(--texto); border-color: var(--azul); box-shadow: 0 0 10px -3px var(--azul); }
+.kpi-expl {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--borda);
+  color: var(--texto-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.kpi-expl b { color: var(--texto); }
+
 /* ---------------------------------------------------------- boletos ---- */
 
 .dia-grupo {
