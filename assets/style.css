@@ -175,21 +175,41 @@ a { color: var(--azul); }
 
 .marca { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
+/* O logo repete a receita das tres luzes em miniatura: ladrilho escuro
+   (componente), linha acesa (luz) e halo verde por fora (brilho). */
 .marca-icone {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: linear-gradient(150deg, var(--ciano), var(--azul) 55%, var(--roxo));
-  color: #04080f;
-  font-size: 18px;
-  font-weight: 700;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: linear-gradient(155deg, #18273f, #090f1b 62%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   flex: none;
-  box-shadow: 0 6px 20px -6px rgba(91, 157, 255, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  box-shadow: 0 9px 24px -10px rgba(53, 227, 164, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
-.marca-sub { margin: 0; color: var(--texto-3); font-size: 12px; letter-spacing: 0; }
+.marca-icone svg { width: 27px; height: 27px; overflow: visible; }
+.marca-linha {
+  fill: none;
+  stroke: url(#gradMarca);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3.5px rgba(53, 227, 164, 0.95));
+}
+.marca-area { fill: url(#gradMarcaArea); }
+/* a linha do zero: e ela que faz o desenho ler como gráfico, não rabisco */
+.marca-base { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1.3; stroke-linecap: round; }
+.marca-halo { fill: var(--verde); opacity: 0.22; }
+.marca-ponto { fill: #eafff7; filter: drop-shadow(0 0 5px var(--verde)); }
+
+/* no claro o ladrilho continua escuro — logo e marca, nao tema */
+:root[data-tema='claro'] .marca-icone { box-shadow: 0 8px 20px -10px rgba(16, 34, 51, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+
+.marca h1 { font-size: 20px; font-weight: 720; letter-spacing: -0.035em; line-height: 1.15; }
+.marca h1 span { font-weight: 420; color: var(--texto-2); }
+.marca-sub { margin: 1px 0 0; color: var(--texto-3); font-size: 11.5px; letter-spacing: 0.005em; }
 
 .topo-acoes { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
 

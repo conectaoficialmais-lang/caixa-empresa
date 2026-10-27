@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caixa da Empresa</title>
 <meta name="description" content="Controle de caixa da empresa: entradas, saídas, contas a pagar, projeção de saldo futuro, orçamento por envelopes, reserva de emergência e o momento certo de investir em produto novo.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230a1220'/><path d='M4 23 L12 16 L18 20 L28 8' fill='none' stroke='%2335e3a4' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/><circle cx='28' cy='8' r='2.9' fill='%2338d9f0'/></svg>">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -21,9 +21,31 @@
 <header class="topo">
   <div class="topo-faixa">
     <div class="marca">
-      <span class="marca-icone" aria-hidden="true">₿</span>
+      <!-- O logo e a propria curva de projecao: a linha do caixa subindo, o
+           tombo no meio e o ponto do menor saldo. As tres camadas de luz
+           aparecem nele tambem — ladrilho escuro, linha acesa, halo por fora. -->
+      <span class="marca-icone" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+          <defs>
+            <linearGradient id="gradMarca" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="var(--ciano)"/>
+              <stop offset="55%" stop-color="var(--verde)"/>
+              <stop offset="100%" stop-color="#9dffd8"/>
+            </linearGradient>
+            <linearGradient id="gradMarcaArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--verde)" stop-opacity="0.5"/>
+              <stop offset="100%" stop-color="var(--verde)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path class="marca-area" d="M4 22 L12.5 13.5 L17 19 L27 6.5 L27 26 L4 26 Z"/>
+          <path class="marca-base" d="M4 26 H27"/>
+          <path class="marca-linha" d="M4 22 L12.5 13.5 L17 19 L27 6.5"/>
+          <circle class="marca-halo" cx="27" cy="6.5" r="6"/>
+          <circle class="marca-ponto" cx="27" cy="6.5" r="3.2"/>
+        </svg>
+      </span>
       <div>
-        <h1>Caixa da Empresa</h1>
+        <h1>Caixa <span>da Empresa</span></h1>
         <p class="marca-sub">Entra, sai, sobra — e quando dá para investir</p>
       </div>
     </div>
@@ -610,6 +632,37 @@
     <div class="cartao-cabeca"><h2>Como usar, em 5 minutos</h2></div>
 
     <details class="dobra" open>
+      <summary>A rotina: 1 minuto por dia, 10 por semana, 20 por mês</summary>
+      <div>
+        <p>Um controle de caixa não se usa “quando dá”: ele vira mentira em duas semanas de atraso.
+        A rotina abaixo é curta de propósito — se não couber na sua semana, ela não vai durar.</p>
+
+        <p><b>Todo dia — 1 minuto, na aba Painel.</b> Olhe dois números: o <b>menor saldo</b> do período
+        e a bolinha vermelha na aba <b>Boletos</b>. Se a bolinha estiver acesa, alguma conta venceu —
+        isso vem antes de qualquer outra coisa, porque juros correm todo dia. Nada mais precisa ser
+        feito num dia normal.</p>
+
+        <p><b>Toda semana — 10 minutos.</b> Três passos, nesta ordem:</p>
+        <p>1. <b>Importar</b> o extrato da semana (CSV do banco). Confira a prévia antes de confirmar.<br>
+        2. <b>Boletos</b>: ligue o interruptor do que você pagou.<br>
+        3. <b>Ajustes → Carteiras</b>: compare o saldo da coluna “hoje” com o que o banco e os
+        marketplaces mostram. Se divergir, digite o valor real — a data de conferência se atualiza
+        sozinha e o histórico anterior não é contado de novo.</p>
+
+        <p><b>Todo mês, no primeiro dia útil — 20 minutos.</b> Cinco passos:</p>
+        <p>1. <b>Boletos → “Trazer as contas fixas”</b>, com o filtro no mês novo. Isso monta a lista do
+        mês inteiro de uma vez; depois é só corrigir os valores que variam (luz, cartão).<br>
+        2. Guarde os boletos que chegaram, colando a linha digitável.<br>
+        3. <b>Orçamento → “Fechar o mês passado”</b>: o que sobrou em cada envelope vira acumulado.<br>
+        4. <b>Relatórios</b>: veja para onde o dinheiro foi e quanto vazou para gasto pessoal.<br>
+        5. <b>Ajustes → Baixar backup</b>. Sem isso, um navegador limpo apaga o ano inteiro.</p>
+
+        <p><b>Antes de comprar qualquer coisa grande</b>, abra a aba <b>Investir</b>. Ela responde
+        quanto cabe hoje, a partir de que dia cabe, e em quanto tempo o dinheiro volta.</p>
+      </div>
+    </details>
+
+    <details class="dobra">
       <summary>Primeira vez: 4 passos e o app já serve</summary>
       <div>
         <p><b>1. Ajustes → Carteiras.</b> Põe cada lugar onde seu dinheiro está: conta do banco, a reserva,
