@@ -219,9 +219,13 @@ function saldoDaCarteira(carteira, lancamentos) {
   (lancamentos || []).forEach((l) => {
     if (l.status !== 'realizado' || l.data < c.conferidoEm) return;
     if (l.data === c.conferidoEm) {
-      // sem hora da conferencia, vale ter sido digitado: linha de extrato
-      // importada nao tem `criadoEm` e continua de fora
-      const depois = l.criadoEm && (!c.conferidoEmTs || l.criadoEm > c.conferidoEmTs);
+      // Vale QUANDO o lancamento virou dinheiro de verdade: a hora em que foi
+      // marcado como pago, ou, na falta dela, a hora em que foi digitado. Usar
+      // so `criadoEm` erraria o caso comum — boleto criado segunda, saldo
+      // conferido quarta de manha, pago quarta a tarde.
+      const quando = l.realizadoEmTs || l.criadoEm;
+      // sem hora nenhuma, e linha de extrato importada: ja esta no saldo
+      const depois = quando && (!c.conferidoEmTs || quando > c.conferidoEmTs);
       if (!depois) return;
     }
     if (l.tipo === 'transferencia') {
@@ -255,16 +259,31 @@ function somarCarteiras(carteiras, lancamentos) {
 /**
  * Transforma contas fixas em lancamentos de um periodo.
  * Cada recorrente vale do mes de inicio ao mes de fim (quando tem).
+ *
+ * `lancamentos` evita a conta dobrada: quando o boleto daquele mes ja foi
+ * guardado apontando para a conta fixa (campo `recorrente`), a ocorrencia
+ * automatica daquele mes NAO e gerada — senao o DAS de novembro sairia duas
+ * vezes da projecao, uma pela conta fixa e outra pelo boleto.
+ *
+ * O vinculo e explicito, por id. Casar por categoria seria pior: um boleto de
+ * internet apagaria a conta fixa de software so por dividirem a categoria.
  */
-function expandirRecorrentes(recorrentes, de, ate) {
+function expandirRecorrentes(recorrentes, de, ate, lancamentos) {
   const saida = [];
   if (!de || !ate || de > ate) return saida;
+
+  const cobertos = {};
+  (lancamentos || []).forEach((l) => {
+    if (l.recorrente) cobertos[l.recorrente + '|' + mesDe(l.vencimento || l.data)] = true;
+  });
+
   const mesFim = mesDe(ate);
   let mes = mesDe(de);
   let guarda = 0;
   while (mes <= mesFim && guarda++ < 600) {
     (recorrentes || []).forEach((r) => {
       if (r.ativo === false) return;
+      if (cobertos[r.id + '|' + mes]) return;
       if (r.inicio && mes < mesDe(r.inicio)) return;
       if (r.fim && mes > mesDe(r.fim)) return;
       const data = diaDoMes(mes, r.dia || 1);
@@ -356,7 +375,7 @@ function projetar(opcoes) {
   // mostra folga que nao existe justamente quando ele esta atrasado.
   const previstos = (o.lancamentos || []).filter((l) => l.status !== 'realizado' && l.data <= fim);
   const eventos = []
-    .concat(expandirRecorrentes(o.recorrentes, somarDias(hoje, 1), fim))
+    .concat(expandirRecorrentes(o.recorrentes, somarDias(hoje, 1), fim, o.lancamentos))
     .concat(previstos.map((l) => (l.data < hoje ? Object.assign({}, l, { data: hoje, vencido: true }) : l)));
 
   eventos.forEach((l) => {
@@ -613,7 +632,7 @@ function compromissosAte(lancamentos, recorrentes, hoje, dias) {
   const previstos = (lancamentos || []).filter(
     (l) => l.tipo === 'saida' && l.status !== 'realizado' && l.data <= fim
   );
-  const fixas = expandirRecorrentes(recorrentes, hoje, fim).filter((l) => l.tipo === 'saida');
+  const fixas = expandirRecorrentes(recorrentes, hoje, fim, lancamentos).filter((l) => l.tipo === 'saida');
   return previstos.concat(fixas).reduce((s, l) => s + (l.valor || 0), 0);
 }
 
@@ -805,6 +824,40 @@ function separarNovos(candidatos, existentes) {
     novos.push(c);
   });
   return { novos: novos, repetidos: repetidos };
+}
+
+/**
+ * Marca candidatos da importacao que PARECEM ser algo ja lancado.
+ *
+ * O extrato chama de "PAGAMENTO BOLETO 34191..." o que no app se chama "Energia
+ * eletrica": mesma saida, nomes diferentes, entao o dedupe exato nao pega. Sem
+ * isso, importar o extrato desconta a conta de luz uma segunda vez.
+ *
+ * O criterio e valor igual e data perto (padrao: 5 dias). Nada e descartado
+ * sozinho — o candidato so chega desmarcado, para a pessoa decidir.
+ */
+function marcarParecidos(candidatos, existentes, dias) {
+  const tolerancia = dias === undefined ? 5 : dias;
+  return (candidatos || []).map((c) => {
+    if (c.tipo !== 'saida') return c;
+    const igual = (existentes || []).find((l) => {
+      if (l.tipo !== 'saida' || (l.valor || 0) !== c.valor) return false;
+      const base = l.vencimento || l.data;
+      const d = diasEntre(base, c.data);
+      return d !== null && Math.abs(d) <= tolerancia;
+    });
+    if (!igual) return c;
+    return Object.assign({}, c, {
+      marcado: false,
+      parecido: {
+        id: igual.id,
+        descricao: igual.descricao,
+        data: igual.vencimento || igual.data,
+        boleto: !!igual.boleto,
+        aberto: igual.status !== 'realizado',
+      },
+    });
+  });
 }
 
 /**
@@ -1049,6 +1102,7 @@ const Nucleo = {
   mapearLinhas: mapearLinhas,
   chaveLancamento: chaveLancamento,
   separarNovos: separarNovos,
+  marcarParecidos: marcarParecidos,
   aplicarRegras: aplicarRegras,
   classificarLote: classificarLote,
   situacaoBoleto: situacaoBoleto,

@@ -261,6 +261,10 @@ function gastoPorEnvelope(mes) {
  * gasta de dentro do envelope dela. Tirar das duas pontas descontaria duas vezes.
  */
 function baseDoMes(mes) {
+  // Aqui a conta fixa do mes conta SEMPRE, com ou sem boleto vinculado: o que
+  // o orcamento quer saber e quanto o mes deve, nao como a conta foi guardada.
+  // O pagamento dela nao e somado de novo porque a categoria entra em
+  // `categoriasFixas` logo abaixo.
   const fixas = N.expandirRecorrentes(estado.recorrentes, mes + '-01', N.diaDoMes(mes, 31)).filter((r) => {
     if (r.tipo !== 'saida') return false;
     const cat = categoria(r.categoria);
@@ -538,7 +542,7 @@ function pintarPainel() {
   const fim = N.somarDias(hoje, 30);
   const proximos = estado.lancamentos
     .filter((l) => l.status !== 'realizado' && l.data >= hoje && l.data <= fim)
-    .concat(N.expandirRecorrentes(estado.recorrentes, hoje, fim))
+    .concat(N.expandirRecorrentes(estado.recorrentes, hoje, fim, estado.lancamentos))
     .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
 
   const aPagar = proximos.filter((l) => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0);
@@ -658,12 +662,17 @@ function filtrarBoletos() {
   const hoje = N.hojeIso();
   const j = janelaBoletos();
   const busca = (vista.boletos.busca || '').trim().toLowerCase();
+  const mesAtual = N.mesDe(hoje);
 
   return boletosDe()
     .filter((b) => {
+      const mesVenc = N.mesDe(b.vencimento || b.data);
       if (j.vencidos) return N.situacaoBoleto(b, hoje) === 'vencido';
-      if (j.mes) return N.mesDe(b.vencimento || b.data) === j.mes;
-      return true;
+      if (!j.mes) return true;
+      if (mesVenc === j.mes) return true;
+      // O que venceu e nao foi pago continua sendo pendencia DESTE mes: virar a
+      // folha do calendario nao paga a conta do mes passado.
+      return j.mes === mesAtual && mesVenc < j.mes && b.status !== 'realizado';
     })
     .filter((b) => {
       const s = N.situacaoBoleto(b, hoje);
@@ -689,14 +698,22 @@ function pintarBoletos() {
 
   $('#b-categoria').innerHTML = opcoesCategoria('saida', $('#b-categoria').value, 'sem categoria');
   $('#b-carteira').innerHTML = opcoesCarteira($('#b-carteira').value, 'sem carteira');
+  $('#b-recorrente').innerHTML =
+    '<option value="">— nenhuma —</option>' +
+    estado.recorrentes
+      .filter((r) => (r.tipo || 'saida') === 'saida')
+      .map((r) => '<option value="' + esc(r.id) + '"' + (r.id === $('#b-recorrente').value ? ' selected' : '') + '>' + esc(r.descricao) + '</option>')
+      .join('');
 
   // bolinha na aba quando tem conta atrasada
   $('#pino-boletos').hidden = resumoGeral.quantidadeVencida === 0;
 
   // KPIs
+  // o atrasado e SEMPRE de tudo que esta em aberto, nao so do filtro da tela:
+  // um numero de alerta que muda conforme o filtro nao alerta ninguem
   const kpis = [
     { rotulo: 'A pagar — ' + j.titulo, valor: dinheiro(resumo.aberto), nota: resumo.quantidade - resumo.porSituacao.pago + ' contas em aberto', luz: 'azul', destaque: true },
-    { rotulo: 'Atrasado', valor: dinheiro(resumo.vencido), nota: resumo.quantidadeVencida ? resumo.quantidadeVencida + ' conta(s) passou do prazo' : 'nada vencido', luz: resumo.vencido ? 'vermelho' : 'verde', cor: resumo.vencido ? 'vermelho' : 'verde' },
+    { rotulo: 'Atrasado (tudo)', valor: dinheiro(resumoGeral.vencido), nota: resumoGeral.quantidadeVencida ? resumoGeral.quantidadeVencida + ' conta(s) passou do prazo' : 'nada vencido', luz: resumoGeral.vencido ? 'vermelho' : 'verde', cor: resumoGeral.vencido ? 'vermelho' : 'verde' },
     { rotulo: 'Vence em 7 dias', valor: dinheiro(resumo.proximos7), nota: resumo.venceHoje ? dinheiro(resumo.venceHoje) + ' é hoje' : 'nada para hoje', luz: 'amarelo', cor: resumo.proximos7 ? 'amarelo' : '' },
     { rotulo: 'Já pago — ' + j.titulo, valor: dinheiro(resumo.pago), nota: resumo.porSituacao.pago + ' de ' + resumo.quantidade + ' contas', luz: 'verde', cor: 'verde' },
   ];
@@ -746,6 +763,10 @@ function pintarBoletos() {
       const inicial = String(b.descricao || '?').trim().charAt(0).toUpperCase();
       const meta = [];
       if (b.parcela) meta.push('parcela ' + b.parcela.n + '/' + b.parcela.de);
+      if (b.recorrente) {
+        const fixa = estado.recorrentes.find((r) => r.id === b.recorrente);
+        meta.push('conta fixa' + (fixa ? ': ' + esc(fixa.descricao) : ''));
+      }
       if (b.categoria) meta.push(esc(nomeCategoria(b.categoria)));
       if (b.carteira) meta.push(esc(nomeCarteira(b.carteira)));
       if (b.status === 'realizado' && b.pagoEm) {
@@ -820,6 +841,7 @@ function limparFormBoleto() {
   $('#b-linha').value = '';
   $('#b-parcelas').value = 1;
   $('#b-vencimento').value = '';
+  $('#campo-pago-em').hidden = true;
   $('#selo-leitura').hidden = true;
   $('#btn-cancelar-boleto').hidden = true;
   $('#b-parcelas').disabled = false;
@@ -837,7 +859,10 @@ function editarBoleto(id) {
   $('#b-carteira').value = b.carteira || '';
   $('#b-obs').value = b.obs || '';
   $('#b-linha').value = b.linha || '';
+  $('#b-recorrente').value = b.recorrente || '';
   $('#b-pago').checked = b.status === 'realizado';
+  $('#b-pago-em').value = b.pagoEm || N.hojeIso();
+  $('#campo-pago-em').hidden = b.status !== 'realizado';
   $('#b-parcelas').value = 1;
   $('#b-parcelas').disabled = true; // editar nao re-parcela
   $('#btn-cancelar-boleto').hidden = false;
@@ -1294,7 +1319,12 @@ function processarExtrato() {
   const separado = N.separarNovos(classificado, estado.lancamentos);
   const destino = $('#imp-carteira').value;
 
-  imp.candidatos = separado.novos.map((c) => Object.assign({}, c, { carteira: c.carteira || destino, marcado: true, chave: novoId() }));
+  // o extrato chama de "PAGAMENTO BOLETO 34191" o que aqui se chama "Energia
+  // eletrica": mesmo dinheiro, nome diferente. Esses chegam desmarcados.
+  const comParecidos = N.marcarParecidos(separado.novos, estado.lancamentos);
+  imp.candidatos = comParecidos.map((c) =>
+    Object.assign({}, c, { carteira: c.carteira || destino, marcado: c.marcado !== false, chave: novoId() })
+  );
   imp.repetidos = separado.repetidos;
   imp.recusados = mapeado.recusados;
 
@@ -1305,6 +1335,17 @@ function processarExtrato() {
   if (separado.repetidos.length) avisos.push(['info', '◇', '<b>' + separado.repetidos.length + '</b> linhas já estavam lançadas (mesma data, valor e descrição) e foram deixadas de fora.']);
   if (mapeado.recusados.length) avisos.push(['atencao', '▲', '<b>' + mapeado.recusados.length + '</b> linhas não deram para ler (data ou valor ilegível) — normalmente são cabeçalho, rodapé ou linha de saldo.']);
   if (semCategoria) avisos.push(['atencao', '◉', '<b>' + semCategoria + '</b> lançamentos vão entrar <b>sem categoria</b>. Dá para escolher na própria tabela, ou criar uma regra e ler o extrato de novo.']);
+
+  const parecidos = imp.candidatos.filter((c) => c.parecido);
+  if (parecidos.length) {
+    const abertos = parecidos.filter((c) => c.parecido.aberto);
+    avisos.push([
+      'atencao',
+      '◈',
+      '<b>' + parecidos.length + '</b> linha(s) parecem ser pagamento de algo que já está aqui — mesmo valor, data próxima, nome diferente. Vieram <b>desmarcadas</b> para não descontar o mesmo dinheiro duas vezes.' +
+        (abertos.length ? ' Em ' + abertos.length + ' delas o que já existe é um <b>boleto em aberto</b>: o certo é marcar o boleto como pago na aba Boletos, não importar a linha.' : ''),
+    ]);
+  }
   if (!imp.candidatos.length) avisos.push(['info', '◆', 'Nada novo para importar.']);
   $('#avisos-previa').innerHTML = avisos.map((a) => '<div class="aviso ' + a[0] + '"><span class="aviso-icone">' + a[1] + '</span><div>' + a[2] + '</div></div>').join('');
 
@@ -1324,7 +1365,11 @@ function pintarPrevia() {
           (c) =>
             '<tr><td class="meio"><input type="checkbox" data-prev="' + c.chave + '"' + (c.marcado ? ' checked' : '') + '></td>' +
             '<td class="num">' + esc(N.formatarData(c.data)) + '</td>' +
-            '<td>' + esc(c.descricao) + '</td>' +
+            '<td>' + esc(c.descricao) +
+            (c.parecido
+              ? '<div class="ajuda">parece ' + (c.parecido.aberto ? 'o boleto em aberto' : 'o lançamento') + ' <b>' + esc(c.parecido.descricao) + '</b> de ' + esc(N.formatarData(c.parecido.data)) + '</div>'
+              : '') +
+            '</td>' +
             '<td><select data-prev-tipo="' + c.chave + '">' +
             ['entrada', 'saida', 'transferencia']
               .map((t) => '<option value="' + t + '"' + (t === c.tipo ? ' selected' : '') + '>' + (t === 'saida' ? 'saída' : t === 'transferencia' ? 'transf.' : 'entrada') + '</option>')
@@ -1559,6 +1604,55 @@ function ligarEventos() {
 
   $('#btn-cancelar-boleto').addEventListener('click', limparFormBoleto);
 
+  $('#b-pago').addEventListener('change', () => {
+    const marcado = $('#b-pago').checked;
+    $('#campo-pago-em').hidden = !marcado;
+    if (marcado && !$('#b-pago-em').value) $('#b-pago-em').value = N.hojeIso();
+  });
+
+  $('#btn-trazer-fixas').addEventListener('click', () => {
+    const j = janelaBoletos();
+    const mes = j.mes || N.mesDe(N.hojeIso());
+    const fixas = estado.recorrentes.filter((r) => r.ativo !== false && (r.tipo || 'saida') === 'saida');
+    if (!fixas.length) {
+      toast('Você ainda não tem contas fixas. Cadastre em Agenda.', true);
+      return;
+    }
+
+    const jaTem = {};
+    boletosDe().forEach((b) => {
+      if (b.recorrente && N.mesDe(b.vencimento || b.data) === mes) jaTem[b.recorrente] = true;
+    });
+    const novas = fixas.filter((r) => !jaTem[r.id]);
+    if (!novas.length) {
+      toast('As contas fixas de ' + N.formatarMes(mes) + ' já estão na lista.');
+      return;
+    }
+    if (!confirm('Criar ' + novas.length + ' boleto(s) de ' + N.formatarMes(mes) + ' a partir das suas contas fixas?')) return;
+
+    const agora = new Date().toISOString();
+    novas.forEach((r) => {
+      estado.lancamentos.push({
+        id: novoId(),
+        criadoEm: agora,
+        boleto: true,
+        tipo: 'saida',
+        descricao: r.descricao,
+        valor: r.valor || 0,
+        vencimento: N.diaDoMes(mes, r.dia || 1),
+        data: N.diaDoMes(mes, r.dia || 1),
+        categoria: r.categoria || '',
+        carteira: r.carteira || '',
+        recorrente: r.id,
+        status: 'previsto',
+        pagoEm: null,
+      });
+    });
+    salvar();
+    pintar();
+    toast(novas.length + ' conta(s) de ' + N.formatarMes(mes) + ' na lista. Confira o valor de cada uma.');
+  });
+
   $('#form-boleto').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const valor = N.paraCentavos($('#b-valor').value);
@@ -1573,6 +1667,7 @@ function ligarEventos() {
     }
 
     const pago = $('#b-pago').checked;
+    const pagoEm = pago ? $('#b-pago-em').value || N.hojeIso() : null;
     const base = {
       boleto: true,
       tipo: 'saida',
@@ -1581,17 +1676,20 @@ function ligarEventos() {
       vencimento: vencimento,
       categoria: $('#b-categoria').value,
       carteira: $('#b-carteira').value,
+      recorrente: $('#b-recorrente').value || null,
       obs: $('#b-obs').value.trim(),
       linha: N.soDigitos($('#b-linha').value) || '',
     };
 
     if (vista.editandoBoleto) {
       const b = acharLanc(vista.editandoBoleto);
+      const virouPago = pago && b.status !== 'realizado';
       Object.assign(b, base, {
         status: pago ? 'realizado' : 'previsto',
-        pagoEm: pago ? b.pagoEm || N.hojeIso() : null,
+        pagoEm: pago ? pagoEm : null,
       });
       b.data = pago ? b.pagoEm : vencimento;
+      if (virouPago) b.realizadoEmTs = new Date().toISOString();
       toast('Boleto atualizado.');
     } else {
       const quantas = Math.max(1, Math.min(60, +$('#b-parcelas').value || 1));
@@ -1602,9 +1700,10 @@ function ligarEventos() {
           Object.assign({}, p, {
             id: novoId(),
             criadoEm: new Date().toISOString(),
+            realizadoEmTs: estePago ? new Date().toISOString() : null,
             status: estePago ? 'realizado' : 'previsto',
-            pagoEm: estePago ? N.hojeIso() : null,
-            data: estePago ? N.hojeIso() : p.vencimento,
+            pagoEm: estePago ? pagoEm : null,
+            data: estePago ? pagoEm : p.vencimento,
             descricao: p.parcela ? p.descricao + ' (' + p.parcela.n + '/' + p.parcela.de + ')' : p.descricao,
           })
         );
@@ -2085,8 +2184,8 @@ function ligarEventos() {
         b.status = 'realizado';
         b.pagoEm = N.hojeIso();
         b.data = b.pagoEm;
-        // sem hora de registro o saldo da carteira nao se mexeria hoje
-        if (!b.criadoEm) b.criadoEm = new Date().toISOString();
+        // a hora do pagamento e o que faz o saldo da carteira se mexer hoje
+        b.realizadoEmTs = new Date().toISOString();
         const atraso = N.diasEntre(b.vencimento || b.data, b.pagoEm);
         toast('Pago: ' + b.descricao + ' · ' + dinheiro(b.valor) + (atraso > 0 ? ' (com ' + atraso + ' dia(s) de atraso)' : ''));
       }
@@ -2133,10 +2232,17 @@ function ligarEventos() {
     if (acao === 'realizar') {
       const l = acharLanc(id);
       if (!l) return;
+      const eraOutroDia = l.data !== N.hojeIso();
+      // o dinheiro andou AGORA: a data vira hoje e fica a hora, senao a conta
+      // atrasada sumiria da projecao sem nunca sair do saldo
+      if (!l.vencimento && eraOutroDia) l.vencimento = l.data;
       l.status = 'realizado';
+      l.data = N.hojeIso();
+      l.pagoEm = l.data;
+      l.realizadoEmTs = new Date().toISOString();
       salvar();
       pintar();
-      toast('Marcado como realizado.');
+      toast(eraOutroDia ? 'Marcado como pago hoje. Se o dinheiro saiu em outro dia, edite a data.' : 'Marcado como realizado.');
     }
 
     if (acao === 'apagar-rec') {

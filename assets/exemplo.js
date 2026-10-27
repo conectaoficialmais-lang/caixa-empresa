@@ -51,12 +51,12 @@ function dadosExemplo(hoje) {
     { descricao: 'Energia elétrica', valor: 46500, vencimento: d(-3), categoria: 'outra-saida', carteira: 'inter', status: 'previsto' },
     { descricao: 'Internet e telefone', valor: 19900, vencimento: d(2), categoria: 'software', carteira: 'inter', status: 'previsto' },
     { descricao: 'Fornecedor A — nota 4471', valor: 620000, vencimento: d(9), categoria: 'estoque', carteira: 'inter', status: 'previsto' },
-    { descricao: 'Contador', valor: 25000, vencimento: d(-8), categoria: 'contador', carteira: 'inter', status: 'realizado', pagoEm: d(-8) },
+    { descricao: 'Contador', valor: 25000, vencimento: d(-8), categoria: 'contador', carteira: 'inter', status: 'realizado', pagoEm: d(-8), recorrente: 'contador' },
     { descricao: 'Fornecedor C — maquinário (1/3)', valor: 116667, vencimento: d(14), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 1, de: 3 } },
     { descricao: 'Fornecedor C — maquinário (2/3)', valor: 116667, vencimento: N.somarMeses(d(14), 1), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 2, de: 3 } },
     { descricao: 'Fornecedor C — maquinário (3/3)', valor: 116666, vencimento: N.somarMeses(d(14), 2), categoria: 'investimento', carteira: 'inter', status: 'previsto', parcela: { n: 3, de: 3 } },
     { descricao: 'Aluguel do depósito', valor: 180000, vencimento: doMes(N.mesDe(N.somarMeses(h, 1)), 5), categoria: 'outra-saida', carteira: 'inter', status: 'previsto' },
-    { descricao: 'Imposto do próximo mês', valor: 190000, vencimento: doMes(N.mesDe(N.somarMeses(h, 1)), 20), categoria: 'imposto', carteira: 'inter', status: 'previsto' },
+    { descricao: 'Imposto do próximo mês', valor: 190000, vencimento: doMes(N.mesDe(N.somarMeses(h, 1)), 20), categoria: 'imposto', carteira: 'inter', status: 'previsto', recorrente: 'imposto' },
   ].map((b) =>
     Object.assign({ boleto: true, tipo: 'saida' }, b, { data: b.status === 'realizado' ? b.pagoEm : b.vencimento })
   );

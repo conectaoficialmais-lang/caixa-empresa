@@ -9,7 +9,7 @@ quanto, e em quanto tempo esse dinheiro volta?*
 
 Site estático, sem build e sem dependências: HTML, CSS e três arquivos de JavaScript.
 
-![testes](https://img.shields.io/badge/testes-191%20passando-brightgreen)
+![testes](https://img.shields.io/badge/testes-206%20passando-brightgreen)
 ![dependências](https://img.shields.io/badge/depend%C3%AAncias-0-blue)
 
 ---
@@ -73,7 +73,7 @@ compra livre**.
 ## As contas
 
 Elas vivem todas em [`assets/nucleo.js`](assets/nucleo.js), que é puro (não toca na tela) e tem
-191 testes em [`tools/testar.js`](tools/testar.js).
+206 testes em [`tools/testar.js`](tools/testar.js).
 
 ### Projeção de saldo
 
@@ -214,7 +214,7 @@ assets/nucleo.js    as contas, puras e testadas (roda no navegador e no Node)
 assets/app.js       estado, telas, gráficos e eventos
 assets/exemplo.js   dados fictícios do botão "carregar exemplo"
 assets/style.css    tema escuro e claro
-tools/testar.js     191 testes das funções puras
+tools/testar.js     206 testes das funções puras
 tools/servidor.js   servidor estático mínimo
 ```
 

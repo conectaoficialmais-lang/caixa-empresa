@@ -150,10 +150,13 @@
       <div class="linha" style="margin-top:10px">
         <label class="cresce"><span class="rotulo">Categoria</span><select id="b-categoria"></select></label>
         <label class="cresce"><span class="rotulo">Sai de qual carteira</span><select id="b-carteira"></select></label>
+        <label class="cresce"><span class="rotulo">É a conta fixa de…</span><select id="b-recorrente"></select>
+          <span class="ajuda">Vinculando, o app não cobra o mês duas vezes.</span></label>
         <label class="cresce" style="flex:2 1 200px"><span class="rotulo">Observação</span><input id="b-obs" type="text" placeholder="nº do pedido, referência, o que for"></label>
       </div>
       <div class="linha" style="margin-top:12px">
         <label class="caixa-check"><input id="b-pago" type="checkbox"> Este já está pago</label>
+        <label id="campo-pago-em" hidden style="flex:0 0 160px"><span class="rotulo">Pago em</span><input id="b-pago-em" type="date"></label>
         <div style="margin-left:auto; display:flex; gap:8px">
           <button id="btn-cancelar-boleto" class="btn btn-fantasma" type="button" hidden>Cancelar</button>
           <button class="btn" type="submit">Guardar boleto</button>
@@ -181,7 +184,9 @@
         <button class="pilula" data-status="pago">Pagos</button>
       </div>
       <label class="cresce" style="min-width:160px"><input id="b-busca" type="search" placeholder="buscar por nome…"></label>
+      <button id="btn-trazer-fixas" class="btn btn-fantasma btn-mini" type="button">+ Trazer as contas fixas</button>
     </div>
+    <p class="ajuda">“Trazer as contas fixas” cria, de uma vez, os boletos do mês que você está vendo a partir da sua lista de contas fixas — já vinculados, então nada é cobrado duas vezes.</p>
 
     <div id="lista-boletos" style="margin-top:14px"></div>
   </div>

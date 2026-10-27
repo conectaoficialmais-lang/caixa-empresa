@@ -133,6 +133,23 @@ conferir(
   ),
   1000000
 );
+// o caso real: boleto criado segunda, saldo conferido quarta de manha,
+// pago quarta a tarde — tem de descer do saldo
+conferir(
+  'vale a hora do pagamento, nao a hora em que foi criado',
+  N.saldoDaCarteira(CONF_HORA, [
+    {
+      data: '2026-10-20',
+      tipo: 'saida',
+      valor: 50000,
+      carteira: 'inter',
+      status: 'realizado',
+      criadoEm: '2026-10-18T10:00:00.000Z',
+      realizadoEmTs: '2026-10-20T17:00:00.000Z',
+    },
+  ]),
+  950000
+);
 conferir(
   'sem hora de registro, no dia da conferencia, nao conta',
   N.saldoDaCarteira(CONF_HORA, [{ data: '2026-10-20', tipo: 'saida', valor: 50000, carteira: 'inter', status: 'realizado' }]),
@@ -162,6 +179,23 @@ conferir('ignora recorrente encerrada', expandido.filter((l) => l.descricao === 
 conferir('primeira fixa e a do dia 5', expandido[0].data, '2026-10-05');
 conferir('expande em ordem de data', expandido.map((l) => l.data).join(','), '2026-10-05,2026-10-20,2026-11-05,2026-11-20');
 conferir('recorrente inativa nao expande', N.expandirRecorrentes([{ id: 'x', valor: 100, dia: 1, ativo: false }], '2026-10-01', '2026-10-31').length, 0);
+
+// boleto vinculado a conta fixa substitui a ocorrencia daquele mes
+const BOLETO_DAS = { id: 'bd', data: '2026-11-20', vencimento: '2026-11-20', tipo: 'saida', descricao: 'DAS de novembro', valor: 197642, categoria: 'imposto', status: 'previsto', boleto: true, recorrente: 'das' };
+
+const comVinculo = N.expandirRecorrentes(RECORRENTES, '2026-11-01', '2026-11-30', [BOLETO_DAS]);
+conferir('conta fixa com boleto do mes nao e gerada de novo', comVinculo.filter((l) => l.recorrente === 'das').length, 0);
+conferir('as outras contas fixas do mes continuam', comVinculo.length, 1);
+conferir(
+  'boleto de outro mes nao apaga a conta fixa deste',
+  N.expandirRecorrentes(RECORRENTES, '2026-12-01', '2026-12-31', [BOLETO_DAS]).filter((l) => l.recorrente === 'das').length,
+  1
+);
+conferir(
+  'boleto sem vinculo nao apaga conta fixa nenhuma',
+  N.expandirRecorrentes(RECORRENTES, '2026-11-01', '2026-11-30', [Object.assign({}, BOLETO_DAS, { recorrente: null })]).length,
+  2
+);
 
 /* ---------------------------------------------------------- projecao ---- */
 
@@ -315,6 +349,27 @@ const projRecompraMaior = N.projetar({
   hoje: '2026-10-26',
 });
 conferir('compra maior que a premissa zera a premissa do mes', projRecompraMaior.saldoFinal, 3000000 - 1500000);
+
+// a conta nao pode sair duas vezes da projecao
+const CARTEIRA_SIMPLES = [{ id: 'inter', disponivel: 2000000, aLiberar: 0, diasLiberacao: 0 }];
+const basePorFora = {
+  carteiras: CARTEIRA_SIMPLES,
+  recorrentes: [{ id: 'das', descricao: 'DAS', valor: 197642, dia: 20, tipo: 'saida', categoria: 'imposto' }],
+  premissas: { usarEntradaDiaria: false },
+  horizonte: 40,
+  hoje: '2026-10-26',
+};
+const semBoleto = N.projetar(basePorFora);
+const comBoleto = N.projetar(Object.assign({}, basePorFora, { lancamentos: [BOLETO_DAS] }));
+const comBoletoSolto = N.projetar(Object.assign({}, basePorFora, { lancamentos: [Object.assign({}, BOLETO_DAS, { recorrente: null })] }));
+
+conferir('boleto vinculado nao duplica a conta fixa', comBoleto.saldoFinal, semBoleto.saldoFinal);
+conferir('boleto solto desconta por cima da conta fixa', comBoletoSolto.saldoFinal, semBoleto.saldoFinal - 197642);
+conferir(
+  'compromissos tambem contam uma vez so',
+  N.compromissosAte([BOLETO_DAS], basePorFora.recorrentes, '2026-10-26', 40),
+  197642
+);
 
 /* -------------------------------------------- simulador e quando posso -- */
 
@@ -488,6 +543,36 @@ const dedupeDentroDoArquivo = N.separarNovos(
   []
 );
 conferir('duplicata dentro do proprio arquivo tambem conta', dedupeDentroDoArquivo.repetidos.length, 1);
+
+/* ---- pagamento que ja esta lancado com outro nome ---- */
+
+const JA_LANCADOS = [
+  { id: 'x1', tipo: 'saida', descricao: 'Energia elétrica', valor: 46500, vencimento: '2026-10-20', data: '2026-10-20', status: 'previsto', boleto: true },
+  { id: 'x2', tipo: 'saida', descricao: 'Fornecedor', valor: 900000, data: '2026-10-02', status: 'realizado' },
+];
+
+const doExtrato = [
+  { data: '2026-10-22', tipo: 'saida', descricao: 'PAGAMENTO BOLETO 34191', valor: 46500 },
+  { data: '2026-10-22', tipo: 'saida', descricao: 'COMPRA MERCADO', valor: 8900 },
+  { data: '2026-10-02', tipo: 'saida', descricao: 'PIX ENVIADO', valor: 900000 },
+];
+
+const comParecidos = N.marcarParecidos(doExtrato, JA_LANCADOS);
+conferir('acha o boleto pago com outro nome no extrato', (comParecidos[0].parecido || {}).descricao, 'Energia elétrica');
+conferir('o parecido chega desmarcado', comParecidos[0].marcado, false);
+conferir('diz que o parecido e um boleto em aberto', comParecidos[0].parecido.aberto, true);
+conferir('linha sem par nenhum passa limpa', comParecidos[1].parecido, undefined);
+conferir('tambem acha pagamento ja realizado', (comParecidos[2].parecido || {}).descricao, 'Fornecedor');
+conferir(
+  'fora da janela de dias nao e parecido',
+  (N.marcarParecidos([{ data: '2026-11-15', tipo: 'saida', descricao: 'x', valor: 46500 }], JA_LANCADOS)[0] || {}).parecido,
+  undefined
+);
+conferir(
+  'entrada de mesmo valor nao e confundida com pagamento',
+  (N.marcarParecidos([{ data: '2026-10-21', tipo: 'entrada', descricao: 'x', valor: 46500 }], JA_LANCADOS)[0] || {}).parecido,
+  undefined
+);
 
 const csvPreambulo = N.lerCsv(
   [
